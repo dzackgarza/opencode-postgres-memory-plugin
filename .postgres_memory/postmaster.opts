@@ -1,0 +1,1 @@
+/home/dzack/.cache/uv/archive-v0/aG0cVZZCvZmc_HEdFM3FE/lib/python3.12/site-packages/pgserver/pginstall/bin/postgres "-D" "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory" "-h" "" "-k" "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory"

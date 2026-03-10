@@ -132,7 +132,7 @@ asyncio.run(main())
 }
 
 export const PostgresMemoryPlugin: Plugin = async ({ client, project }) => {
-  const dbDir = join(project.worktree, ".postgres_memory");
+  const dbDir = process.env.POSTGRES_MEMORY_DB_DIR || join(import.meta.dir, "..", ".postgres_memory");
   const projectName = project.id;
 
   return {
@@ -179,7 +179,9 @@ Populate Memory Example:
             const pass = buildPassphrase("query_memories", "execute");
             return pass ? `${result}\n\nPassphrase: ${pass}` : result;
           } catch (error) {
-            return `Error: ${String(error)}`;
+            const pass = buildPassphrase("query_memories", "execute");
+            const result = `Error: ${String(error)}`;
+            return pass ? `${result}\n\nPassphrase: ${pass}` : result;
           }
         },
       }),

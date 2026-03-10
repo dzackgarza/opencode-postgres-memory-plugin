@@ -1,0 +1,297 @@
+2026-03-09 13:46:38.893 UTC [814686] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:46:38.895 UTC [814686] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:46:38.899 UTC [814689] LOG:  database system was shut down at 2026-03-09 13:46:38 UTC
+2026-03-09 13:46:38.905 UTC [814686] LOG:  database system is ready to accept connections
+2026-03-09 13:46:39.494 UTC [814686] LOG:  server process (PID 814693) was terminated by signal 4: Illegal instruction
+2026-03-09 13:46:39.494 UTC [814686] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:46:39.494 UTC [814686] LOG:  terminating any other active server processes
+2026-03-09 13:46:39.495 UTC [814686] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:46:39.548 UTC [814686] LOG:  received fast shutdown request
+2026-03-09 13:46:39.548 UTC [814696] LOG:  database system was interrupted; last known up at 2026-03-09 13:46:38 UTC
+2026-03-09 13:46:39.659 UTC [814696] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:46:39.662 UTC [814696] LOG:  redo starts at 0/14807E0
+2026-03-09 13:48:48.419 UTC [829255] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:48:48.421 UTC [829255] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:48:48.426 UTC [829258] LOG:  database system was interrupted while in recovery at 2026-03-09 13:46:39 UTC
+2026-03-09 13:48:48.426 UTC [829258] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:48:48.544 UTC [829258] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:48:48.546 UTC [829258] LOG:  redo starts at 0/14807E0
+2026-03-09 13:48:48.553 UTC [829258] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/14F4000, offset 5193728
+2026-03-09 13:48:48.553 UTC [829258] LOG:  redo done at 0/14F3168 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:48:48.557 UTC [829256] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:48:48.576 UTC [829256] LOG:  checkpoint complete: wrote 96 buffers (0.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.007 s, sync=0.006 s, total=0.021 s; sync files=58, longest=0.002 s, average=0.001 s; distance=462 kB, estimate=462 kB; lsn=0/14F4048, redo lsn=0/14F4048
+2026-03-09 13:48:48.579 UTC [829255] LOG:  database system is ready to accept connections
+2026-03-09 13:48:48.990 UTC [829255] LOG:  server process (PID 829263) was terminated by signal 4: Illegal instruction
+2026-03-09 13:48:48.990 UTC [829255] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:48:48.990 UTC [829255] LOG:  terminating any other active server processes
+2026-03-09 13:48:48.993 UTC [829255] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:48:49.022 UTC [829255] LOG:  received fast shutdown request
+2026-03-09 13:48:49.023 UTC [829277] LOG:  database system was interrupted; last known up at 2026-03-09 13:48:48 UTC
+2026-03-09 13:48:49.130 UTC [829277] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:48:49.133 UTC [829277] LOG:  redo starts at 0/14F40C0
+2026-03-09 13:50:10.398 UTC [838225] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:50:10.400 UTC [838225] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:50:10.406 UTC [838228] LOG:  database system was interrupted while in recovery at 2026-03-09 13:48:49 UTC
+2026-03-09 13:50:10.406 UTC [838228] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:50:10.498 UTC [838228] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:50:10.500 UTC [838228] LOG:  redo starts at 0/14F40C0
+2026-03-09 13:50:10.509 UTC [838228] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/155E000, offset 5627904
+2026-03-09 13:50:10.509 UTC [838228] LOG:  redo done at 0/155BB98 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:50:10.514 UTC [838226] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:50:10.529 UTC [838226] LOG:  checkpoint complete: wrote 79 buffers (0.5%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.005 s, total=0.017 s; sync files=43, longest=0.001 s, average=0.001 s; distance=424 kB, estimate=424 kB; lsn=0/155E048, redo lsn=0/155E048
+2026-03-09 13:50:10.532 UTC [838225] LOG:  database system is ready to accept connections
+2026-03-09 13:50:10.928 UTC [838225] LOG:  server process (PID 838234) was terminated by signal 4: Illegal instruction
+2026-03-09 13:50:10.928 UTC [838225] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:50:10.928 UTC [838225] LOG:  terminating any other active server processes
+2026-03-09 13:50:10.931 UTC [838225] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:50:10.950 UTC [838225] LOG:  received fast shutdown request
+2026-03-09 13:50:10.950 UTC [838237] LOG:  database system was interrupted; last known up at 2026-03-09 13:50:10 UTC
+2026-03-09 13:50:11.037 UTC [838237] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:50:11.040 UTC [838237] LOG:  redo starts at 0/155E0C0
+2026-03-09 13:52:08.110 UTC [850432] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:52:08.112 UTC [850432] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:52:08.119 UTC [850435] LOG:  database system was interrupted while in recovery at 2026-03-09 13:50:11 UTC
+2026-03-09 13:52:08.119 UTC [850435] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:52:08.234 UTC [850435] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:52:08.237 UTC [850435] LOG:  redo starts at 0/155E0C0
+2026-03-09 13:52:08.248 UTC [850435] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/15BA000, offset 6004736
+2026-03-09 13:52:08.248 UTC [850435] LOG:  redo done at 0/15B85F0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.01 s
+2026-03-09 13:52:08.253 UTC [850433] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:52:08.270 UTC [850433] LOG:  checkpoint complete: wrote 69 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.005 s, total=0.019 s; sync files=43, longest=0.002 s, average=0.001 s; distance=368 kB, estimate=368 kB; lsn=0/15BA048, redo lsn=0/15BA048
+2026-03-09 13:52:08.276 UTC [850432] LOG:  database system is ready to accept connections
+2026-03-09 13:52:08.684 UTC [850432] LOG:  server process (PID 850469) was terminated by signal 4: Illegal instruction
+2026-03-09 13:52:08.684 UTC [850432] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:52:08.684 UTC [850432] LOG:  terminating any other active server processes
+2026-03-09 13:52:08.687 UTC [850432] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:52:08.706 UTC [850432] LOG:  received fast shutdown request
+2026-03-09 13:52:08.707 UTC [850522] LOG:  database system was interrupted; last known up at 2026-03-09 13:52:08 UTC
+2026-03-09 13:52:08.782 UTC [850522] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:52:08.785 UTC [850522] LOG:  redo starts at 0/15BA0C0
+2026-03-09 13:53:26.526 UTC [858263] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:53:26.528 UTC [858263] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:53:26.534 UTC [858268] LOG:  database system was interrupted while in recovery at 2026-03-09 13:52:08 UTC
+2026-03-09 13:53:26.534 UTC [858268] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:53:26.638 UTC [858268] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:53:26.641 UTC [858268] LOG:  redo starts at 0/15BA0C0
+2026-03-09 13:53:26.645 UTC [858268] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/160C000, offset 6340608
+2026-03-09 13:53:26.645 UTC [858268] LOG:  redo done at 0/1609C78 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:53:26.649 UTC [858266] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:53:26.666 UTC [858266] LOG:  checkpoint complete: wrote 64 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.005 s, total=0.018 s; sync files=42, longest=0.001 s, average=0.001 s; distance=328 kB, estimate=328 kB; lsn=0/160C048, redo lsn=0/160C048
+2026-03-09 13:53:26.671 UTC [858263] LOG:  database system is ready to accept connections
+2026-03-09 13:53:26.977 UTC [858263] LOG:  server process (PID 858272) was terminated by signal 4: Illegal instruction
+2026-03-09 13:53:26.977 UTC [858263] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:53:26.977 UTC [858263] LOG:  terminating any other active server processes
+2026-03-09 13:53:26.980 UTC [858263] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:53:27.001 UTC [858263] LOG:  received fast shutdown request
+2026-03-09 13:53:27.001 UTC [858275] LOG:  database system was interrupted; last known up at 2026-03-09 13:53:26 UTC
+2026-03-09 13:53:27.104 UTC [858275] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:53:27.106 UTC [858275] LOG:  redo starts at 0/160C0C0
+2026-03-09 13:54:44.825 UTC [865021] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:54:44.826 UTC [865021] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:54:44.830 UTC [865024] LOG:  database system was interrupted while in recovery at 2026-03-09 13:53:27 UTC
+2026-03-09 13:54:44.830 UTC [865024] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:54:44.909 UTC [865024] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:54:44.911 UTC [865024] LOG:  redo starts at 0/160C0C0
+2026-03-09 13:54:44.914 UTC [865024] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/165C000, offset 6668288
+2026-03-09 13:54:44.914 UTC [865024] LOG:  redo done at 0/1659730 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:54:44.918 UTC [865022] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:54:44.932 UTC [865022] LOG:  checkpoint complete: wrote 64 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.007 s, total=0.016 s; sync files=42, longest=0.004 s, average=0.001 s; distance=320 kB, estimate=320 kB; lsn=0/165C048, redo lsn=0/165C048
+2026-03-09 13:54:44.935 UTC [865021] LOG:  database system is ready to accept connections
+2026-03-09 13:54:45.344 UTC [865021] LOG:  server process (PID 865028) was terminated by signal 4: Illegal instruction
+2026-03-09 13:54:45.344 UTC [865021] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:54:45.344 UTC [865021] LOG:  terminating any other active server processes
+2026-03-09 13:54:45.347 UTC [865021] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:54:45.367 UTC [865021] LOG:  received fast shutdown request
+2026-03-09 13:54:45.368 UTC [865031] LOG:  database system was interrupted; last known up at 2026-03-09 13:54:44 UTC
+2026-03-09 13:54:45.476 UTC [865031] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:54:45.479 UTC [865031] LOG:  redo starts at 0/165C0C0
+2026-03-09 13:56:40.062 UTC [875106] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:56:40.064 UTC [875106] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:56:40.070 UTC [875109] LOG:  database system was interrupted while in recovery at 2026-03-09 13:54:45 UTC
+2026-03-09 13:56:40.070 UTC [875109] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:56:40.169 UTC [875109] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:56:40.171 UTC [875109] LOG:  redo starts at 0/165C0C0
+2026-03-09 13:56:40.176 UTC [875109] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/16B0000, offset 7012352
+2026-03-09 13:56:40.176 UTC [875109] LOG:  redo done at 0/16AEB38 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:56:40.180 UTC [875107] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:56:40.195 UTC [875107] LOG:  checkpoint complete: wrote 64 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.007 s, total=0.016 s; sync files=42, longest=0.004 s, average=0.001 s; distance=336 kB, estimate=336 kB; lsn=0/16B0048, redo lsn=0/16B0048
+2026-03-09 13:56:40.199 UTC [875106] LOG:  database system is ready to accept connections
+2026-03-09 13:56:40.552 UTC [875106] LOG:  server process (PID 875113) was terminated by signal 4: Illegal instruction
+2026-03-09 13:56:40.552 UTC [875106] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:56:40.552 UTC [875106] LOG:  terminating any other active server processes
+2026-03-09 13:56:40.555 UTC [875106] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:56:40.581 UTC [875106] LOG:  received fast shutdown request
+2026-03-09 13:56:40.582 UTC [875116] LOG:  database system was interrupted; last known up at 2026-03-09 13:56:40 UTC
+2026-03-09 13:56:40.689 UTC [875116] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:56:40.693 UTC [875116] LOG:  redo starts at 0/16B00C0
+2026-03-09 13:58:00.766 UTC [882077] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:58:00.768 UTC [882077] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:58:00.773 UTC [882111] LOG:  database system was interrupted while in recovery at 2026-03-09 13:56:40 UTC
+2026-03-09 13:58:00.773 UTC [882111] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:58:00.870 UTC [882111] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:58:00.873 UTC [882111] LOG:  redo starts at 0/16B00C0
+2026-03-09 13:58:00.877 UTC [882111] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/1708000, offset 7372800
+2026-03-09 13:58:00.878 UTC [882111] LOG:  redo done at 0/1707808 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:58:00.881 UTC [882109] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:58:00.892 UTC [882109] LOG:  checkpoint complete: wrote 65 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.005 s, total=0.013 s; sync files=43, longest=0.003 s, average=0.001 s; distance=352 kB, estimate=352 kB; lsn=0/1708048, redo lsn=0/1708048
+2026-03-09 13:58:00.895 UTC [882077] LOG:  database system is ready to accept connections
+2026-03-09 13:58:01.217 UTC [882077] LOG:  server process (PID 882163) was terminated by signal 4: Illegal instruction
+2026-03-09 13:58:01.217 UTC [882077] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:58:01.217 UTC [882077] LOG:  terminating any other active server processes
+2026-03-09 13:58:01.220 UTC [882077] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:58:01.243 UTC [882166] LOG:  database system was interrupted; last known up at 2026-03-09 13:58:00 UTC
+2026-03-09 13:58:01.244 UTC [882077] LOG:  received fast shutdown request
+2026-03-09 13:58:01.355 UTC [882166] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:58:01.357 UTC [882166] LOG:  redo starts at 0/17080C0
+2026-03-09 13:59:18.326 UTC [888960] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 13:59:18.328 UTC [888960] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 13:59:18.333 UTC [888963] LOG:  database system was interrupted while in recovery at 2026-03-09 13:58:01 UTC
+2026-03-09 13:59:18.333 UTC [888963] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 13:59:18.427 UTC [888963] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:59:18.429 UTC [888963] LOG:  redo starts at 0/17080C0
+2026-03-09 13:59:18.436 UTC [888963] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/1764000, offset 7749632
+2026-03-09 13:59:18.437 UTC [888963] LOG:  redo done at 0/1763028 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 13:59:18.444 UTC [888961] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 13:59:18.456 UTC [888961] LOG:  checkpoint complete: wrote 71 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.005 s, total=0.016 s; sync files=44, longest=0.001 s, average=0.001 s; distance=368 kB, estimate=368 kB; lsn=0/1764048, redo lsn=0/1764048
+2026-03-09 13:59:18.459 UTC [888960] LOG:  database system is ready to accept connections
+2026-03-09 13:59:18.795 UTC [888960] LOG:  server process (PID 888967) was terminated by signal 4: Illegal instruction
+2026-03-09 13:59:18.795 UTC [888960] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 13:59:18.796 UTC [888960] LOG:  terminating any other active server processes
+2026-03-09 13:59:18.797 UTC [888960] LOG:  all server processes terminated; reinitializing
+2026-03-09 13:59:18.824 UTC [888960] LOG:  received fast shutdown request
+2026-03-09 13:59:18.824 UTC [888978] LOG:  database system was interrupted; last known up at 2026-03-09 13:59:18 UTC
+2026-03-09 13:59:18.945 UTC [888978] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 13:59:18.948 UTC [888978] LOG:  redo starts at 0/17640C0
+2026-03-09 14:01:19.752 UTC [905099] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:01:19.754 UTC [905099] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:01:19.759 UTC [905102] LOG:  database system was interrupted while in recovery at 2026-03-09 13:59:18 UTC
+2026-03-09 14:01:19.759 UTC [905102] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:01:19.853 UTC [905102] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:01:19.855 UTC [905102] LOG:  redo starts at 0/17640C0
+2026-03-09 14:01:19.859 UTC [905102] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/17BE000, offset 8118272
+2026-03-09 14:01:19.859 UTC [905102] LOG:  redo done at 0/17BD398 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 14:01:19.863 UTC [905100] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:01:19.880 UTC [905100] LOG:  checkpoint complete: wrote 72 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.008 s, total=0.019 s; sync files=45, longest=0.004 s, average=0.001 s; distance=360 kB, estimate=360 kB; lsn=0/17BE048, redo lsn=0/17BE048
+2026-03-09 14:01:19.884 UTC [905099] LOG:  database system is ready to accept connections
+2026-03-09 14:01:20.315 UTC [905099] LOG:  server process (PID 905106) was terminated by signal 4: Illegal instruction
+2026-03-09 14:01:20.315 UTC [905099] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:01:20.315 UTC [905099] LOG:  terminating any other active server processes
+2026-03-09 14:01:20.316 UTC [905099] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:01:20.340 UTC [905099] LOG:  received fast shutdown request
+2026-03-09 14:01:20.341 UTC [905269] LOG:  database system was interrupted; last known up at 2026-03-09 14:01:19 UTC
+2026-03-09 14:01:20.462 UTC [905269] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:01:20.464 UTC [905269] LOG:  redo starts at 0/17BE0C0
+2026-03-09 14:02:38.680 UTC [915995] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:02:38.682 UTC [915995] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:02:38.688 UTC [915998] LOG:  database system was interrupted while in recovery at 2026-03-09 14:01:20 UTC
+2026-03-09 14:02:38.688 UTC [915998] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:02:38.811 UTC [915998] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:02:38.814 UTC [915998] LOG:  redo starts at 0/17BE0C0
+2026-03-09 14:02:38.824 UTC [915998] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/181C000, offset 8503296
+2026-03-09 14:02:38.824 UTC [915998] LOG:  redo done at 0/181BF98 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.01 s
+2026-03-09 14:02:38.828 UTC [915996] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:02:38.840 UTC [915996] LOG:  checkpoint complete: wrote 72 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.004 s, total=0.013 s; sync files=45, longest=0.001 s, average=0.001 s; distance=376 kB, estimate=376 kB; lsn=0/181C048, redo lsn=0/181C048
+2026-03-09 14:02:38.844 UTC [915995] LOG:  database system is ready to accept connections
+2026-03-09 14:02:39.156 UTC [915995] LOG:  server process (PID 916002) was terminated by signal 4: Illegal instruction
+2026-03-09 14:02:39.156 UTC [915995] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:02:39.156 UTC [915995] LOG:  terminating any other active server processes
+2026-03-09 14:02:39.160 UTC [915995] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:02:39.178 UTC [915995] LOG:  received fast shutdown request
+2026-03-09 14:02:39.178 UTC [916087] LOG:  database system was interrupted; last known up at 2026-03-09 14:02:38 UTC
+2026-03-09 14:02:39.259 UTC [916087] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:02:39.261 UTC [916087] LOG:  redo starts at 0/181C0C0
+2026-03-09 14:03:57.302 UTC [925920] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:03:57.304 UTC [925920] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:03:57.310 UTC [925923] LOG:  database system was interrupted while in recovery at 2026-03-09 14:02:39 UTC
+2026-03-09 14:03:57.310 UTC [925923] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:03:57.434 UTC [925923] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:03:57.436 UTC [925923] LOG:  redo starts at 0/181C0C0
+2026-03-09 14:03:57.440 UTC [925923] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/1876000, offset 8871936
+2026-03-09 14:03:57.440 UTC [925923] LOG:  redo done at 0/1875388 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 14:03:57.447 UTC [925921] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:03:57.463 UTC [925921] LOG:  checkpoint complete: wrote 69 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.008 s, total=0.018 s; sync files=44, longest=0.005 s, average=0.001 s; distance=360 kB, estimate=360 kB; lsn=0/1876048, redo lsn=0/1876048
+2026-03-09 14:03:57.467 UTC [925920] LOG:  database system is ready to accept connections
+2026-03-09 14:03:57.902 UTC [925920] LOG:  server process (PID 925944) was terminated by signal 4: Illegal instruction
+2026-03-09 14:03:57.902 UTC [925920] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:03:57.902 UTC [925920] LOG:  terminating any other active server processes
+2026-03-09 14:03:57.905 UTC [925920] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:03:57.929 UTC [925920] LOG:  received fast shutdown request
+2026-03-09 14:03:57.929 UTC [925947] LOG:  database system was interrupted; last known up at 2026-03-09 14:03:57 UTC
+2026-03-09 14:03:58.061 UTC [925947] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:03:58.064 UTC [925947] LOG:  redo starts at 0/18760C0
+2026-03-09 14:05:18.783 UTC [937985] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:05:18.785 UTC [937985] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:05:18.792 UTC [937988] LOG:  database system was interrupted while in recovery at 2026-03-09 14:03:58 UTC
+2026-03-09 14:05:18.792 UTC [937988] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:05:18.911 UTC [937988] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:05:18.914 UTC [937988] LOG:  redo starts at 0/18760C0
+2026-03-09 14:05:18.917 UTC [937988] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/18D4000, offset 9256960
+2026-03-09 14:05:18.917 UTC [937988] LOG:  redo done at 0/18D3F88 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 14:05:18.921 UTC [937986] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:05:18.935 UTC [937986] LOG:  checkpoint complete: wrote 71 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.005 s, total=0.016 s; sync files=44, longest=0.001 s, average=0.001 s; distance=376 kB, estimate=376 kB; lsn=0/18D4048, redo lsn=0/18D4048
+2026-03-09 14:05:18.938 UTC [937985] LOG:  database system is ready to accept connections
+2026-03-09 14:05:19.220 UTC [937985] LOG:  server process (PID 938000) was terminated by signal 4: Illegal instruction
+2026-03-09 14:05:19.220 UTC [937985] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:05:19.220 UTC [937985] LOG:  terminating any other active server processes
+2026-03-09 14:05:19.224 UTC [937985] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:05:19.246 UTC [937985] LOG:  received fast shutdown request
+2026-03-09 14:05:19.247 UTC [938010] LOG:  database system was interrupted; last known up at 2026-03-09 14:05:18 UTC
+2026-03-09 14:05:19.339 UTC [938010] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:05:19.341 UTC [938010] LOG:  redo starts at 0/18D40C0
+2026-03-09 14:06:24.781 UTC [947016] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:06:24.783 UTC [947016] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:06:24.789 UTC [947023] LOG:  database system was interrupted while in recovery at 2026-03-09 14:05:19 UTC
+2026-03-09 14:06:24.789 UTC [947023] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:06:24.889 UTC [947023] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:06:24.892 UTC [947023] LOG:  redo starts at 0/18D40C0
+2026-03-09 14:06:24.896 UTC [947023] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/1932000, offset 9641984
+2026-03-09 14:06:24.896 UTC [947023] LOG:  redo done at 0/192F8D8 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 14:06:24.901 UTC [947021] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:06:24.916 UTC [947021] LOG:  checkpoint complete: wrote 71 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.007 s, sync=0.005 s, total=0.017 s; sync files=43, longest=0.001 s, average=0.001 s; distance=376 kB, estimate=376 kB; lsn=0/1932048, redo lsn=0/1932048
+2026-03-09 14:06:24.920 UTC [947016] LOG:  database system is ready to accept connections
+2026-03-09 14:06:25.236 UTC [947016] LOG:  server process (PID 947031) was terminated by signal 4: Illegal instruction
+2026-03-09 14:06:25.236 UTC [947016] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:06:25.236 UTC [947016] LOG:  terminating any other active server processes
+2026-03-09 14:06:25.237 UTC [947016] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:06:25.255 UTC [947016] LOG:  received fast shutdown request
+2026-03-09 14:06:25.256 UTC [947039] LOG:  database system was interrupted; last known up at 2026-03-09 14:06:24 UTC
+2026-03-09 14:06:25.342 UTC [947039] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:06:25.344 UTC [947039] LOG:  redo starts at 0/19320C0
+2026-03-09 14:08:25.173 UTC [963649] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:08:25.175 UTC [963649] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:08:25.181 UTC [963652] LOG:  database system was interrupted while in recovery at 2026-03-09 14:06:25 UTC
+2026-03-09 14:08:25.181 UTC [963652] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:08:25.283 UTC [963652] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:08:25.286 UTC [963652] LOG:  redo starts at 0/19320C0
+2026-03-09 14:08:25.290 UTC [963652] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/1992000, offset 10035200
+2026-03-09 14:08:25.290 UTC [963652] LOG:  redo done at 0/198F2C0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 14:08:25.293 UTC [963650] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:08:25.304 UTC [963650] LOG:  checkpoint complete: wrote 70 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.004 s, total=0.012 s; sync files=43, longest=0.001 s, average=0.001 s; distance=384 kB, estimate=384 kB; lsn=0/1992048, redo lsn=0/1992048
+2026-03-09 14:08:25.307 UTC [963649] LOG:  database system is ready to accept connections
+2026-03-09 14:08:25.645 UTC [963649] LOG:  server process (PID 963659) was terminated by signal 4: Illegal instruction
+2026-03-09 14:08:25.645 UTC [963649] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:08:25.645 UTC [963649] LOG:  terminating any other active server processes
+2026-03-09 14:08:25.648 UTC [963649] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:08:25.673 UTC [963649] LOG:  received fast shutdown request
+2026-03-09 14:08:25.675 UTC [963750] LOG:  database system was interrupted; last known up at 2026-03-09 14:08:25 UTC
+2026-03-09 14:08:25.789 UTC [963750] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:08:25.792 UTC [963750] LOG:  redo starts at 0/19920C0
+2026-03-09 14:09:31.036 UTC [973193] LOG:  starting PostgreSQL 16.2 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 10.2.1 20210130 (Red Hat 10.2.1-11), 64-bit
+2026-03-09 14:09:31.039 UTC [973193] LOG:  listening on Unix socket "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin/.postgres_memory/.s.PGSQL.5432"
+2026-03-09 14:09:31.044 UTC [973196] LOG:  database system was interrupted while in recovery at 2026-03-09 14:08:25 UTC
+2026-03-09 14:09:31.044 UTC [973196] HINT:  This probably means that some data is corrupted and you will have to use the last backup for recovery.
+2026-03-09 14:09:31.139 UTC [973196] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:09:31.142 UTC [973196] LOG:  redo starts at 0/19920C0
+2026-03-09 14:09:31.146 UTC [973196] LOG:  invalid magic number 0000 in WAL segment 000000010000000000000001, LSN 0/19F6000, offset 10444800
+2026-03-09 14:09:31.146 UTC [973196] LOG:  redo done at 0/19F4520 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-03-09 14:09:31.150 UTC [973194] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-03-09 14:09:31.169 UTC [973194] LOG:  checkpoint complete: wrote 78 buffers (0.5%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.008 s, total=0.021 s; sync files=43, longest=0.004 s, average=0.001 s; distance=400 kB, estimate=400 kB; lsn=0/19F6048, redo lsn=0/19F6048
+2026-03-09 14:09:31.173 UTC [973193] LOG:  database system is ready to accept connections
+2026-03-09 14:09:31.477 UTC [973193] LOG:  server process (PID 973200) was terminated by signal 4: Illegal instruction
+2026-03-09 14:09:31.477 UTC [973193] DETAIL:  Failed process was running: CREATE EXTENSION IF NOT EXISTS vector
+2026-03-09 14:09:31.477 UTC [973193] LOG:  terminating any other active server processes
+2026-03-09 14:09:31.481 UTC [973193] LOG:  all server processes terminated; reinitializing
+2026-03-09 14:09:31.504 UTC [973193] LOG:  received fast shutdown request
+2026-03-09 14:09:31.505 UTC [973203] LOG:  database system was interrupted; last known up at 2026-03-09 14:09:31 UTC
+2026-03-09 14:09:31.596 UTC [973203] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-03-09 14:09:31.598 UTC [973203] LOG:  redo starts at 0/19F60C0
