@@ -139,7 +139,7 @@ export const PostgresMemoryPlugin: Plugin = async ({ client, project }) => {
     tool: {
       query_memories: tool({
         description: withPassphrase(
-          `Query the project's persistent vector-enabled memory store.
+          `Use when you need to query the project's persistent vector-enabled memory store.
 Schema:
   - id (SERIAL PRIMARY KEY)
   - content (TEXT NOT NULL)

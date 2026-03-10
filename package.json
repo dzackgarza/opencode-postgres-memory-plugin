@@ -1,10 +1,33 @@
 {
-  "name": "opencode-postgres-memory-plugin",
-  "private": true,
+  "name": "@dzackgarza/opencode-postgres-memory-plugin",
+  "version": "0.1.0",
+  "description": "Persistent, vector-enabled memory store for OpenCode agents, backed by PostgreSQL.",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "type": "module",
+  "files": [
+    "src"
+  ],
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dzackgarza/opencode-postgres-memory-plugin.git"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "postgres",
+    "memory",
+    "vector"
+  ],
+  "author": "dzackgarza",
+  "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "latest",
@@ -13,5 +36,5 @@
   "dependencies": {
     "@opencode-ai/plugin": "^1.2.20"
   },
-  "module": "./src/index.ts"
+  "funding": "https://ko-fi.com/I2I57UKJ8"
 }

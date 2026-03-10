@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-const OPENCODE = "/home/dzack/.opencode/bin/opencode";
-const TOOL_DIR = "/home/dzack/opencode-plugins/opencode-postgres-memory-plugin";
+const OPENCODE = process.env.OPENCODE_BIN || "opencode";
+const TOOL_DIR = process.cwd();
 const MAX_BUFFER = 8 * 1024 * 1024;
 
 const SEED = "POSTGRES-MEM-99";
