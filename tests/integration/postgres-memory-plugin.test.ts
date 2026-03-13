@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,6 +57,7 @@ type ServerHarness = {
   databaseUrl: string;
   logs: () => string;
   process: ChildProcess;
+  xdgRoot: string;
 };
 
 type DatabaseTarget = {
@@ -279,6 +281,14 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
   let serverLogs = "";
   const databaseName = new URL(databaseUrl).pathname.replace(/^\//, "");
 
+  const xdgRoot = mkdtempSync(join(tmpdir(), "opencode-postgres-memory-xdg-"));
+  const configHome = join(xdgRoot, "config");
+  const cacheHome = join(xdgRoot, "cache");
+  const stateHome = join(xdgRoot, "state");
+  mkdirSync(configHome, { recursive: true });
+  mkdirSync(cacheHome, { recursive: true });
+  mkdirSync(stateHome, { recursive: true });
+
   const serverProcess = spawn(
     "direnv",
     [
@@ -300,7 +310,12 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
     ],
     {
       cwd: TOOL_DIR,
-      env: process.env,
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: configHome,
+        XDG_CACHE_HOME: cacheHome,
+        XDG_STATE_HOME: stateHome,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -323,6 +338,7 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
         databaseUrl,
         logs: () => serverLogs,
         process: serverProcess,
+        xdgRoot,
       };
     }
     if (serverProcess.exitCode !== null) {
@@ -339,10 +355,14 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
 }
 
 async function stopServer(harness: ServerHarness | undefined) {
-  if (!harness || harness.process.exitCode !== null) return;
+  if (!harness) return;
 
-  harness.process.kill("SIGKILL");
-  await wait(100);
+  if (harness.process.exitCode === null) {
+    harness.process.kill("SIGKILL");
+    await wait(100);
+  }
+
+  rmSync(harness.xdgRoot, { recursive: true, force: true });
 }
 
 function runManager(baseUrl: string, args: string[]) {
@@ -655,7 +675,7 @@ describe("postgres-memory live opencode sessions", () => {
   it("reads the same database from independent OpenCode sessions", async () => {
     if (!normalHarness) throw new Error("Live server was not initialized.");
 
-    const secret = `GOLDEN-TICKET-${randomSuffix()}`;
+    const secret = `GOLDEN-TICKET-${randomUUID()}`;
     const insertSql = `INSERT INTO memories (scope, session_id, project_name, metadata, content)
       VALUES ('session', 'session-alpha', 'live-project', '{"topic":"cross-session"}', '${secret}')`;
     const writeRun = runPrompt(
