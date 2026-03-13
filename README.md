@@ -13,6 +13,13 @@ The design is intentionally thin:
 
 This fits setups such as a standard PostgreSQL server with `pgvector` plus an automatic embedding pipeline like Supabase automatic embeddings.
 
+## Features
+
+- Exposes a single `query_memories` tool accepting raw SQL against a `memories` table
+- Delegates all embedding and semantic indexing to the database layer (no in-process ML)
+- Connects to any PostgreSQL-compatible server via `DATABASE_URL`
+- Compatible with `pgvector` for vector similarity queries
+
 ## Install
 
 Register the plugin in OpenCode:
