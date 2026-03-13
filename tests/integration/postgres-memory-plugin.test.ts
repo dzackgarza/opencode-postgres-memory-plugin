@@ -7,13 +7,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { postgresMemoryTesting } from "../../src/index.ts";
 
-const OPENCODE =
-  process.env.OPENCODE_BIN || "/home/dzack/.opencode/bin/opencode";
+const OPENCODE = process.env.OPENCODE_BIN || "opencode";
 const TOOL_DIR = process.cwd();
 const OPENCODE_CONFIG_PATH = join(TOOL_DIR, ".config", "opencode.json");
 const HOST = "127.0.0.1";
 const MANAGER_PACKAGE =
-  "git+ssh://git@github.com/dzackgarza/opencode-manager.git";
+  "git+https://github.com/dzackgarza/opencode-manager.git";
 const MAX_BUFFER = 8 * 1024 * 1024;
 const SERVER_START_TIMEOUT_MS = 60_000;
 const SESSION_TIMEOUT_MS = 240_000;
