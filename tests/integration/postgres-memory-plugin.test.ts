@@ -1,19 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { postgresMemoryTesting } from "../../src/index.ts";
 
-const OPENCODE =
-  process.env.OPENCODE_BIN || "/home/dzack/.opencode/bin/opencode";
+const OPENCODE = process.env.OPENCODE_BIN || "opencode";
 const TOOL_DIR = process.cwd();
 const OPENCODE_CONFIG_PATH = join(TOOL_DIR, ".config", "opencode.json");
 const HOST = "127.0.0.1";
 const MANAGER_PACKAGE =
-  "git+ssh://git@github.com/dzackgarza/opencode-manager.git";
+  "git+https://github.com/dzackgarza/opencode-manager.git";
 const MAX_BUFFER = 8 * 1024 * 1024;
 const SERVER_START_TIMEOUT_MS = 60_000;
 const SESSION_TIMEOUT_MS = 240_000;
@@ -25,29 +25,23 @@ type QueryExecutionResult = Awaited<
   ReturnType<typeof postgresMemoryTesting.runPostgresQuery>
 >;
 
-type ToolState = {
-  input?: Record<string, unknown>;
-  output?: unknown;
+type ToolUseEvent = {
+  tool: string;
+  inputText?: string;
+  outputText?: string;
   status?: string;
 };
 
-type SessionMessagePart = {
-  type?: string;
-  text?: string;
-  tool?: string;
-  state?: ToolState;
+type TranscriptAssistantMessage = {
+  steps?: ToolUseEvent[];
 };
 
-type SessionMessage = {
-  info?: {
-    role?: string;
-  };
-  parts?: SessionMessagePart[];
+type TranscriptTurn = {
+  assistantMessages?: TranscriptAssistantMessage[];
 };
 
-type ToolUseEvent = {
-  tool: string;
-  state: ToolState;
+type TranscriptDocument = {
+  turns?: TranscriptTurn[];
 };
 
 type ServerHarness = {
@@ -57,6 +51,7 @@ type ServerHarness = {
   databaseUrl: string;
   logs: () => string;
   process: ChildProcess;
+  xdgRoot: string;
 };
 
 type DatabaseTarget = {
@@ -73,10 +68,6 @@ let brokenHarness: ServerHarness | undefined;
 function registerTempPath(path: string): string {
   tempPaths.add(path);
   return path;
-}
-
-function makeTempDir(prefix: string): string {
-  return registerTempPath(mkdtempSync(join(tmpdir(), prefix)));
 }
 
 function randomSuffix(): string {
@@ -280,6 +271,16 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
   let serverLogs = "";
   const databaseName = new URL(databaseUrl).pathname.replace(/^\//, "");
 
+  const xdgRoot = mkdtempSync(join(tmpdir(), "opencode-postgres-memory-xdg-"));
+  const configHome = join(xdgRoot, "config");
+  const cacheHome = join(xdgRoot, "cache");
+  const stateHome = join(xdgRoot, "state");
+  const testHome = join(xdgRoot, "home");
+  mkdirSync(configHome, { recursive: true });
+  mkdirSync(cacheHome, { recursive: true });
+  mkdirSync(stateHome, { recursive: true });
+  mkdirSync(testHome, { recursive: true });
+
   const serverProcess = spawn(
     "direnv",
     [
@@ -301,7 +302,13 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
     ],
     {
       cwd: TOOL_DIR,
-      env: process.env,
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: configHome,
+        XDG_CACHE_HOME: cacheHome,
+        XDG_STATE_HOME: stateHome,
+        OPENCODE_TEST_HOME: testHome,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -324,6 +331,7 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
         databaseUrl,
         logs: () => serverLogs,
         process: serverProcess,
+        xdgRoot,
       };
     }
     if (serverProcess.exitCode !== null) {
@@ -340,10 +348,14 @@ async function startServer(databaseUrl: string): Promise<ServerHarness> {
 }
 
 async function stopServer(harness: ServerHarness | undefined) {
-  if (!harness || harness.process.exitCode !== null) return;
+  if (!harness) return;
 
-  harness.process.kill("SIGKILL");
-  await wait(100);
+  if (harness.process.exitCode === null) {
+    harness.process.kill("SIGKILL");
+    await wait(100);
+  }
+
+  rmSync(harness.xdgRoot, { recursive: true, force: true });
 }
 
 function runManager(baseUrl: string, args: string[]) {
@@ -375,65 +387,52 @@ function runManager(baseUrl: string, args: string[]) {
   return { stdout, stderr };
 }
 
-function parseKeptSessionID(stderr: string) {
-  const match = stderr.match(/\[opx\] session kept: (ses_[A-Za-z0-9]+)/);
-  if (!match) {
-    throw new Error(`Could not parse kept session ID.\n${stderr}`);
-  }
-  return match[1];
-}
-
-function runPrompt(baseUrl: string, prompt: string, lingerSeconds = 0) {
-  return runManager(baseUrl, [
-    "run",
+function beginPrompt(baseUrl: string, prompt: string) {
+  const { stdout } = runManager(baseUrl, [
+    "begin-session",
+    prompt,
     "--agent",
     PRIMARY_AGENT_NAME,
-    "--prompt",
-    prompt,
-    "--keep",
-    "--linger",
-    String(lingerSeconds),
+    "--json",
   ]);
+  const parsed = JSON.parse(stdout) as { sessionID?: string };
+  if (!parsed.sessionID) {
+    throw new Error(`Could not parse session handle.\n${stdout}`);
+  }
+  runManager(baseUrl, ["wait", "--session", parsed.sessionID, "--json"]);
+  return parsed.sessionID;
 }
 
-function readMessages(baseUrl: string, sessionID: string): SessionMessage[] {
+function readTranscript(baseUrl: string, sessionID: string): TranscriptDocument {
   const { stdout } = runManager(baseUrl, [
-    "session",
-    "messages",
+    "transcript",
     "--session",
     sessionID,
+    "--json",
   ]);
-  return JSON.parse(stdout) as SessionMessage[];
+  return JSON.parse(stdout) as TranscriptDocument;
 }
 
 function findCompletedToolUse(
-  messages: SessionMessage[],
+  transcript: TranscriptDocument,
   toolName: string,
 ): ToolUseEvent {
-  const toolParts = messages
-    .filter((message) => message.info?.role === "assistant")
-    .flatMap((message) => message.parts ?? [])
+  const toolSteps = (transcript.turns ?? [])
+    .flatMap((turn) => turn.assistantMessages ?? [])
+    .flatMap((message) => message.steps ?? [])
     .filter(
-      (part): part is Required<Pick<SessionMessagePart, "tool" | "state">> &
-        SessionMessagePart =>
-        part.type === "tool" &&
-        part.tool === toolName &&
-        typeof part.state === "object" &&
-        part.state !== null &&
-        part.state.status === "completed",
+      (step) =>
+        step.tool === toolName &&
+        step.status === "completed",
     );
 
-  const match = toolParts.at(-1);
+  const match = toolSteps.at(-1);
   if (!match) {
     throw new Error(
-      `No completed tool use for ${toolName}.\n${JSON.stringify(messages, null, 2)}`,
+      `No completed tool use for ${toolName}.\n${JSON.stringify(transcript, null, 2)}`,
     );
   }
-
-  return {
-    tool: toolName,
-    state: match.state,
-  };
+  return match;
 }
 
 function normalizeSql(sql: string) {
@@ -441,7 +440,8 @@ function normalizeSql(sql: string) {
 }
 
 function toolInputSql(toolUse: ToolUseEvent): string {
-  const sql = toolUse.state.input?.sql;
+  const parsed = JSON.parse(toolUse.inputText ?? "{}") as { sql?: unknown };
+  const sql = parsed.sql;
   if (typeof sql !== "string") {
     throw new Error(`Tool input did not include sql: ${JSON.stringify(toolUse)}`);
   }
@@ -656,14 +656,13 @@ describe("postgres-memory live opencode sessions", () => {
   it("reads the same database from independent OpenCode sessions", async () => {
     if (!normalHarness) throw new Error("Live server was not initialized.");
 
-    const secret = `GOLDEN-TICKET-${randomSuffix()}`;
+    const secret = `GOLDEN-TICKET-${randomUUID()}`;
     const insertSql = `INSERT INTO memories (scope, session_id, project_name, metadata, content)
       VALUES ('session', 'session-alpha', 'live-project', '{"topic":"cross-session"}', '${secret}')`;
-    const writeRun = runPrompt(
+    beginPrompt(
       normalHarness.baseUrl,
       `Call query_memories exactly once with this SQL and no changes:\n${insertSql}\nReply with ONLY WRITTEN after the tool finishes.`,
     );
-    parseKeptSessionID(writeRun.stderr);
     expect(normalHarness.databaseName.startsWith("opencode_live_")).toBe(true);
 
     expectRows(
@@ -681,34 +680,32 @@ describe("postgres-memory live opencode sessions", () => {
       FROM memories
       WHERE project_name = 'live-project' AND session_id = 'session-alpha'
       LIMIT 1`;
-    const readRun = runPrompt(
+    const readSessionID = beginPrompt(
       normalHarness.baseUrl,
       `Call query_memories exactly once with this SQL and no changes:\n${selectSql}\nThe correct value is a random token, so do not guess and do not answer from prior context.\nReply with ONLY the exact content value and nothing else.`,
     );
-    const readSessionID = parseKeptSessionID(readRun.stderr);
     const readTool = findCompletedToolUse(
-      readMessages(normalHarness.baseUrl, readSessionID),
+      readTranscript(normalHarness.baseUrl, readSessionID),
       "query_memories",
     );
     expect(normalizeSql(toolInputSql(readTool))).toBe(normalizeSql(selectSql));
-    expect(String(readTool.state.output ?? "")).toContain(secret);
+    expect(String(readTool.outputText ?? "")).toContain(secret);
   }, 220_000);
 
   it("surfaces SQL mistakes to the agent as query failures", () => {
     if (!normalHarness) throw new Error("Live server was not initialized.");
 
     const invalidSql = "SELEC count(*) FROM memories";
-    const run = runPrompt(
+    const sessionID = beginPrompt(
       normalHarness.baseUrl,
       `Call query_memories exactly once with this SQL and no changes:\n${invalidSql}\nReply with ONLY FAILED after the tool finishes.`,
     );
-    const sessionID = parseKeptSessionID(run.stderr);
 
     const toolUse = findCompletedToolUse(
-      readMessages(normalHarness.baseUrl, sessionID),
+      readTranscript(normalHarness.baseUrl, sessionID),
       "query_memories",
     );
-    const output = String(toolUse.state.output ?? "");
+    const output = String(toolUse.outputText ?? "");
     expect(output).toContain("QUERY FAILURE");
     expect(output).toContain("sqlstate: 42601");
     expect(output).not.toContain("TOOL FAILURE");
@@ -723,17 +720,16 @@ describe("postgres-memory live tool failures", () => {
   it("surfaces database connection problems to the agent as tool failures", () => {
     if (!brokenHarness) throw new Error("Broken live server was not initialized.");
 
-    const run = runPrompt(
+    const sessionID = beginPrompt(
       brokenHarness.baseUrl,
       "Call query_memories exactly once with this SQL and no changes:\nSELECT 1\nReply with ONLY FAILED after the tool finishes.",
     );
-    const sessionID = parseKeptSessionID(run.stderr);
 
     const toolUse = findCompletedToolUse(
-      readMessages(brokenHarness.baseUrl, sessionID),
+      readTranscript(brokenHarness.baseUrl, sessionID),
       "query_memories",
     );
-    const output = String(toolUse.state.output ?? "");
+    const output = String(toolUse.outputText ?? "");
     expect(output).toContain("TOOL FAILURE");
     expect(output).toContain("stage: database_connection");
     expect(output).toContain(postgresMemoryTesting.BUG_REPORTING_URL);

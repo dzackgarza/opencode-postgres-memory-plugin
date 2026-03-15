@@ -1,5 +1,6 @@
 import { type Plugin, tool } from "@opencode-ai/plugin";
 import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import pkg from "../package.json" assert { type: "json" };
 
@@ -10,8 +11,10 @@ const BUG_REPORTING_URL =
   "https://github.com/dzackgarza/opencode-postgres-memory-plugin/issues/new?labels=bug";
 const DATABASE_URL_ENV = "POSTGRES_MEMORY_DATABASE_URL";
 const MEMORY_SEED_ENV = "POSTGRES_MEMORY_TEST_SEED";
-const REQUEST_ENV = "POSTGRES_MEMORY_REQUEST_JSON";
-const PYTHON_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+const UV_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+const POSTGRES_MEMORY_CLI_PATH = fileURLToPath(
+  new URL("./postgres_memory_cli.py", import.meta.url),
+);
 const ISSUE_REPORTING_HINT =
   `If this looks like a plugin/runtime bug, file a GitHub issue tagged \`bug\`: ${BUG_REPORTING_URL}. Include the SQL, redacted database URL, and exact error below.`;
 
@@ -48,7 +51,6 @@ type ToolFailure = {
   message: string;
   sql: string;
   stage: string;
-  traceback?: string | null;
 };
 
 type QueryExecutionResult =
@@ -57,290 +59,24 @@ type QueryExecutionResult =
   | QueryFailure
   | ToolFailure;
 
-const PYTHON_QUERY_RUNNER = String.raw`
-import asyncio
-import json
-import os
-import traceback
-import urllib.parse
-
-import asyncpg
-
-REQUEST_ENV = "POSTGRES_MEMORY_REQUEST_JSON"
-
-
-def redact_url(database_url):
-    if not database_url:
-        return ""
-    try:
-        parsed = urllib.parse.urlsplit(database_url)
-    except Exception:
-        return database_url
-
-    netloc = parsed.hostname or ""
-    if parsed.username:
-        username = urllib.parse.quote(parsed.username, safe="")
-        if parsed.password is not None:
-            netloc = f"{username}:***@{netloc}"
-        else:
-            netloc = f"{username}@{netloc}"
-    if parsed.port is not None:
-        netloc = f"{netloc}:{parsed.port}"
-    return urllib.parse.urlunsplit(
-        (
-            parsed.scheme,
-            netloc,
-            parsed.path,
-            parsed.query,
-            parsed.fragment,
-        )
-    )
-
-
-def emit(payload):
-    print(json.dumps(payload, default=str))
-
-
-def emit_tool_failure(stage, message, database_url, sql, detail=None):
-    payload = {
-        "ok": False,
-        "failureKind": "tool_failure",
-        "stage": stage,
-        "message": message,
-        "databaseUrl": redact_url(database_url),
-        "sql": sql,
+type DoctorResult =
+  | {
+      ok: true;
+      kind: "doctor";
+      checks: Record<string, string>;
+      databaseUrl: string;
+      message: string;
     }
-    if detail:
-        payload["detail"] = detail
-        payload["traceback"] = traceback.format_exc()
-    emit(payload)
-    raise SystemExit(0)
+  | (ToolFailure & { checks?: Record<string, string> });
 
-
-def query_returns_rows(sql_input):
-    stripped = sql_input.lstrip()
-    upper = stripped.upper()
-    if " RETURNING " in upper:
-        return True
-    return upper.startswith(("SELECT", "WITH", "SHOW", "EXPLAIN", "VALUES"))
-
-
-async def ensure_schema(conn, database_url, sql):
-    try:
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    except asyncpg.PostgresError as error:
-        detail = "\\n".join(
-            [
-                str(error),
-                f"SQLSTATE: {getattr(error, 'sqlstate', None)}",
-            ]
-        )
-        emit_tool_failure(
-            "extension_bootstrap",
-            "The PostgreSQL server does not have a working pgvector extension. Admin action may be required to install or enable pgvector.",
-            database_url,
-            sql,
-            detail=detail,
-        )
-
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS memories (
-            id BIGSERIAL PRIMARY KEY,
-            scope TEXT NOT NULL DEFAULT 'session',
-            session_id TEXT,
-            content TEXT NOT NULL,
-            embedding VECTOR(1536),
-            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-            project_name TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-
-    await conn.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'session'"
-    )
-    await conn.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS session_id TEXT"
-    )
-    await conn.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb"
-    )
-    await conn.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS project_name TEXT"
-    )
-    await conn.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"
-    )
-    await conn.execute(
-        "ALTER TABLE memories ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"
-    )
-
-    embedding_info = await conn.fetchrow(
-        """
-        SELECT
-            data_type,
-            udt_name
-        FROM information_schema.columns
-        WHERE table_schema = current_schema()
-          AND table_name = 'memories'
-          AND column_name = 'embedding'
-        """
-    )
-    if embedding_info is None:
-        await conn.execute("ALTER TABLE memories ADD COLUMN embedding VECTOR(1536)")
-    elif embedding_info["udt_name"] != "vector":
-        emit_tool_failure(
-            "schema_bootstrap",
-            f"Existing memories.embedding column has type {embedding_info['udt_name']!r}; expected pgvector. Manual migration is required before this plugin can run.",
-            database_url,
-            sql,
-        )
-
-    await conn.execute("UPDATE memories SET scope = 'session' WHERE scope IS NULL")
-    await conn.execute("ALTER TABLE memories ALTER COLUMN scope SET DEFAULT 'session'")
-    await conn.execute("ALTER TABLE memories ALTER COLUMN scope SET NOT NULL")
-
-    await conn.execute(
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_constraint
-                WHERE conname = 'memories_scope_check'
-            ) THEN
-                ALTER TABLE memories
-                ADD CONSTRAINT memories_scope_check
-                CHECK (scope IN ('session', 'global'));
-            END IF;
-        END
-        $$;
-        """
-    )
-    await conn.execute(
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_constraint
-                WHERE conname = 'memories_scope_session_check'
-            ) THEN
-                ALTER TABLE memories
-                ADD CONSTRAINT memories_scope_session_check
-                CHECK (
-                    (scope = 'global' AND session_id IS NULL)
-                    OR (scope = 'session' AND session_id IS NOT NULL)
-                );
-            END IF;
-        END
-        $$;
-        """
-    )
-
-    await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_memories_project_scope_session ON memories (project_name, scope, session_id)"
-    )
-    await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories (created_at DESC)"
-    )
-    await conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_memories_embedding_hnsw ON memories USING hnsw (embedding vector_l2_ops)"
-    )
-
-
-async def main():
-    request_text = os.environ.get(REQUEST_ENV, "").strip()
-    if not request_text:
-        emit_tool_failure("request_parse", f"{REQUEST_ENV} was empty.", "", "")
-
-    try:
-        request = json.loads(request_text)
-    except Exception as error:
-        emit_tool_failure(
-            "request_parse",
-            "Could not parse the query runner request.",
-            "",
-            "",
-            detail=str(error),
-        )
-
-    sql = request.get("sql")
-    database_url = request.get("databaseUrl")
-    if not isinstance(sql, str) or not sql.strip():
-        emit_tool_failure(
-            "request_parse",
-            "SQL must be a non-empty string.",
-            database_url if isinstance(database_url, str) else "",
-            sql if isinstance(sql, str) else "",
-        )
-    if not isinstance(database_url, str) or not database_url.strip():
-        emit_tool_failure(
-            "request_parse",
-            "Database URL must be a non-empty string.",
-            database_url if isinstance(database_url, str) else "",
-            sql,
-        )
-
-    conn = None
-    try:
-        conn = await asyncpg.connect(database_url)
-        await ensure_schema(conn, database_url, sql)
-
-        try:
-            if query_returns_rows(sql):
-                rows = await conn.fetch(sql)
-                emit(
-                    {
-                        "ok": True,
-                        "kind": "rows",
-                        "rowCount": len(rows),
-                        "rows": [dict(row) for row in rows],
-                    }
-                )
-            else:
-                emit(
-                    {
-                        "ok": True,
-                        "kind": "command",
-                        "commandTag": await conn.execute(sql),
-                    }
-                )
-        except asyncpg.PostgresError as error:
-            emit(
-                {
-                    "ok": False,
-                    "failureKind": "query_failure",
-                    "message": str(error),
-                    "code": getattr(error, "sqlstate", None),
-                    "detail": getattr(error, "detail", None),
-                    "hint": getattr(error, "hint", None),
-                    "position": getattr(error, "position", None),
-                    "where": getattr(error, "where", None),
-                    "sql": sql,
-                }
-            )
-    except Exception as error:
-        detail = str(error)
-        lowered = detail.lower()
-        stage = "database_runtime"
-        if "password authentication failed" in lowered or "peer authentication failed" in lowered:
-            stage = "database_authentication"
-        elif "does not exist" in lowered or "connection refused" in lowered or "connect call failed" in lowered:
-            stage = "database_connection"
-        elif "memories.embedding column has type" in lowered:
-            stage = "schema_bootstrap"
-        emit_tool_failure(stage, detail, database_url, sql, detail=detail)
-    finally:
-        if conn is not None:
-            await conn.close()
-
-
-asyncio.run(main())
-`;
+type BootstrapResult =
+  | {
+      ok: true;
+      kind: "bootstrap";
+      message: string;
+      databaseUrl: string;
+    }
+  | ToolFailure;
 
 function buildPassphrase(
   toolName: string,
@@ -432,11 +168,11 @@ function buildToolFailure(
   };
 }
 
-function parseRunnerResult(raw: string | undefined): QueryExecutionResult | undefined {
+function parseRunnerResult<T>(raw: string | undefined): T | undefined {
   const trimmed = raw?.trim();
   if (!trimmed) return undefined;
   try {
-    return JSON.parse(trimmed) as QueryExecutionResult;
+    return JSON.parse(trimmed) as T;
   } catch {
     return undefined;
   }
@@ -463,57 +199,108 @@ function extractExecErrorDetail(error: unknown): {
   return { detail: message, stdout, stderr };
 }
 
+async function runCliJson<T>(
+  args: string[],
+  contextForFailure: {
+    fallbackFailureStage: string;
+    fallbackMessage: string;
+    sql: string;
+    databaseUrl: string;
+  },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<ToolFailure | T> {
+  const command = [
+    "run",
+    "--script",
+    POSTGRES_MEMORY_CLI_PATH,
+    ...args,
+    "--output",
+    "json",
+  ];
+
+  try {
+    const { stdout } = await execFileAsync("uv", command, {
+      env,
+      maxBuffer: UV_MAX_BUFFER_BYTES,
+    });
+
+    const parsed = parseRunnerResult<T | ToolFailure>(stdout);
+    if (parsed) return parsed;
+    return buildToolFailure(
+      "runner_output",
+      "The Postgres memory CLI returned a non-JSON payload.",
+      contextForFailure.sql,
+      contextForFailure.databaseUrl,
+      stdout.trim(),
+    );
+  } catch (error) {
+    const { detail, stdout, stderr } = extractExecErrorDetail(error);
+    const parsed = parseRunnerResult<T | ToolFailure>(stdout);
+    if (parsed) return parsed;
+
+    return buildToolFailure(
+      contextForFailure.fallbackFailureStage,
+      contextForFailure.fallbackMessage,
+      contextForFailure.sql,
+      contextForFailure.databaseUrl,
+      [detail, stderr].filter(Boolean).join("\n"),
+    );
+  }
+}
+
 async function runPostgresQuery(
   sql: string,
   databaseUrl: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<QueryExecutionResult> {
-  const request = JSON.stringify({ sql, databaseUrl });
-
-  try {
-    const { stdout } = await execFileAsync(
-      "uv",
-      [
-        "run",
-        "--no-project",
-        "--python",
-        "3.12",
-        "--with",
-        "asyncpg",
-        "python3",
-        "-c",
-        PYTHON_QUERY_RUNNER,
-      ],
-      {
-        env: {
-          ...env,
-          [REQUEST_ENV]: request,
-        },
-        maxBuffer: PYTHON_MAX_BUFFER_BYTES,
-      },
-    );
-
-    const parsed = parseRunnerResult(stdout);
-    if (parsed) return parsed;
-    return buildToolFailure(
-      "runner_output",
-      "The Postgres query runner returned a non-JSON payload.",
+  const result = await runCliJson<QueryExecutionResult>(
+    ["query", "--sql", sql, "--database-url", databaseUrl],
+    {
+      fallbackFailureStage: "runner_process",
+      fallbackMessage: "The Postgres memory CLI exited before returning a result.",
       sql,
       databaseUrl,
-      stdout.trim(),
-    );
-  } catch (error) {
-    const { detail, stdout, stderr } = extractExecErrorDetail(error);
-    const parsed = parseRunnerResult(stdout);
-    if (parsed) return parsed;
-    return buildToolFailure(
-      "runner_process",
-      "The Postgres query runner exited before it returned a result.",
-      sql,
+    },
+    env,
+  );
+
+  return result;
+}
+
+async function runBootstrap(
+  databaseUrl: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<BootstrapResult> {
+  const result = await runCliJson<BootstrapResult>(
+    ["bootstrap", "--database-url", databaseUrl],
+    {
+      fallbackFailureStage: "runner_process",
+      fallbackMessage: "The Postgres memory CLI exited before bootstrap completed.",
+      sql: "-- bootstrap --",
       databaseUrl,
-      [detail, stderr].filter(Boolean).join("\n"),
-    );
-  }
+    },
+    env,
+  );
+
+  return result;
+}
+
+async function runDoctor(
+  databaseUrl: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<DoctorResult> {
+  const result = await runCliJson<DoctorResult>(
+    ["doctor", "--database-url", databaseUrl],
+    {
+      fallbackFailureStage: "runner_process",
+      fallbackMessage: "The Postgres memory CLI exited before doctor completed.",
+      sql: "-- doctor --",
+      databaseUrl,
+    },
+    env,
+  );
+
+  return result;
 }
 
 function formatQueryResult(result: QueryExecutionResult): string {
@@ -543,7 +330,6 @@ function formatQueryResult(result: QueryExecutionResult): string {
     `stage: ${result.stage}`,
     `message: ${result.message}`,
     result.detail ? `detail: ${result.detail}` : undefined,
-    result.traceback ? `traceback:\n${result.traceback}` : undefined,
     `database_url: ${result.databaseUrl}`,
     `sql: ${result.sql}`,
     `bug_report: ${BUG_REPORTING_URL}`,
@@ -555,10 +341,13 @@ function formatQueryResult(result: QueryExecutionResult): string {
 
 export const postgresMemoryTesting = {
   BUG_REPORTING_URL,
+  CLI_PATH: POSTGRES_MEMORY_CLI_PATH,
   buildPassphrase,
   formatQueryResult,
   redactDatabaseUrl,
   resolveDatabaseUrl,
+  runBootstrap,
+  runDoctor,
   runPostgresQuery,
 };
 
@@ -569,23 +358,10 @@ export const PostgresMemoryPlugin: Plugin = async ({ project }) => {
     tool: {
       query_memories: tool({
         description: withPassphrase(
-          withPluginVersion(`Use standard PostgreSQL syntax to read and write memories for this project.
+          withPluginVersion(`Use when you need to run SQL against the Postgres memory store.
 
-Canonical table: memories
-Columns:
-  - id BIGSERIAL PRIMARY KEY
-  - scope TEXT NOT NULL
-  - session_id TEXT
-  - content TEXT NOT NULL
-  - embedding VECTOR(1536)
-  - metadata JSONB NOT NULL
-  - project_name TEXT
-  - created_at TIMESTAMPTZ NOT NULL
-  - updated_at TIMESTAMPTZ NOT NULL
-
-Conventions:
-  - session memories: scope = 'session' and session_id is set
-  - global memories: scope = 'global' and session_id is NULL
+This plugin is a thin adapter over the standalone CLI at src/postgres_memory_cli.py.
+Canonical table: memories (bootstrapped by the CLI when needed).
 
 Example write:
   INSERT INTO memories (scope, session_id, project_name, content, metadata)
@@ -635,6 +411,7 @@ Example semantic search:
           context.metadata({
             title: "Postgres memory query",
             metadata: {
+              cliPath: POSTGRES_MEMORY_CLI_PATH,
               databaseUrl: redactDatabaseUrl(databaseUrl),
               projectName,
               resultKind: result.ok ? result.kind : result.failureKind,

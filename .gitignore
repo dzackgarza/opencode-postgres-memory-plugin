@@ -1,5 +1,8 @@
 node_modules/
 .serena/
+.tmp/
 *.log
 .DS_Store
 .postgres_memory/
+.env
+.config/temp.opencode.*.json

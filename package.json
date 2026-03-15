@@ -9,8 +9,9 @@
     "src"
   ],
   "scripts": {
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "test": "just --justfile justfile test",
+    "typecheck": "just --justfile justfile typecheck",
+    "check": "just --justfile justfile check"
   },
   "publishConfig": {
     "access": "public"
@@ -36,5 +37,8 @@
   "dependencies": {
     "@opencode-ai/plugin": "^1.2.20"
   },
-  "funding": "https://ko-fi.com/I2I57UKJ8"
+  "funding": "https://ko-fi.com/I2I57UKJ8",
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }

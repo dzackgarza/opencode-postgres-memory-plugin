@@ -2,20 +2,67 @@
 
 # Postgres Memory Plugin
 
-OpenCode plugin that exposes a simple Postgres-backed memory store through one raw SQL tool, `query_memories`.
+Postgres-backed memory store for OpenCode, implemented CLI-first:
 
-The design is intentionally thin:
+- standalone Typer CLI is the canonical product surface
+- OpenCode plugin is a thin adapter that delegates to the CLI
+- canonical table is `memories`
 
-- the interface is standard PostgreSQL syntax
-- semantic search uses `pgvector`
-- embeddings are expected to be managed by your database-side pipeline
-- one canonical table, `memories`, is the source of truth
+## CLI First
 
-This fits setups such as a standard PostgreSQL server with `pgvector` plus an automatic embedding pipeline like Supabase automatic embeddings.
+Run help:
 
-## Install
+```bash
+uv run --script src/postgres_memory_cli.py --help
+```
 
-Register the plugin in OpenCode:
+### Commands
+
+Show environment and schema diagnostics:
+
+```bash
+uv run --script src/postgres_memory_cli.py doctor
+```
+
+Bootstrap extension, schema, and indexes:
+
+```bash
+uv run --script src/postgres_memory_cli.py bootstrap
+```
+
+Run a SQL query against the memory database:
+
+```bash
+uv run --script src/postgres_memory_cli.py query --sql "SELECT now()"
+```
+
+Return machine-readable output:
+
+```bash
+uv run --script src/postgres_memory_cli.py query --sql "SELECT 1 AS ok" --output json
+```
+
+## Configuration
+
+The CLI and plugin resolve database settings in this order:
+
+- `POSTGRES_MEMORY_DATABASE_URL`
+- `DATABASE_URL`
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+
+Example:
+
+```bash
+export POSTGRES_MEMORY_DATABASE_URL='postgresql://postgres:password@127.0.0.1:5432/opencode_memories'
+```
+
+`pgvector` must be available on the target PostgreSQL server.
+
+For repo-local verification, use the tracked [`.envrc`](/home/dzack/.worktrees/opencode-plugins-clean/opencode-postgres-memory-plugin/repo/.envrc) and put real database URLs in an ignored `.env` file.
+
+## OpenCode Plugin Registration
+
+Register the plugin in OpenCode after validating the CLI:
 
 ```json
 {
@@ -28,29 +75,9 @@ Register the plugin in OpenCode:
 }
 ```
 
-## Configuration
+The plugin exposes one tool, `query_memories`, and delegates execution to the same CLI implementation used above.
 
-Point the plugin at a real PostgreSQL database with one of:
-
-- `POSTGRES_MEMORY_DATABASE_URL`
-- `DATABASE_URL`
-- standard `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
-
-Example:
-
-```bash
-export POSTGRES_MEMORY_DATABASE_URL='postgresql://postgres:password@127.0.0.1:5432/opencode-memories'
-```
-
-For repo-local verification, the package `.envrc` exports `OPENCODE_CONFIG`,
-`OPENCODE_CONFIG_DIR`, and the Postgres test database URLs so the checked-in
-`.config/plugins/` shim is the runtime source of the plugin under test.
-
-The database must have the `vector` extension available.
-
-## Schema
-
-Canonical table: `memories`
+## Canonical Schema
 
 ```sql
 CREATE TABLE memories (
@@ -68,10 +95,8 @@ CREATE TABLE memories (
 
 Conventions:
 
-- session memories use `scope = 'session'` and a non-null `session_id`
-- global memories use `scope = 'global'` and `session_id IS NULL`
-
-The plugin bootstraps this schema and creates the supporting indexes it needs, including an `hnsw` index on `embedding`.
+- session memories: `scope = 'session'` and `session_id` is non-null
+- global memories: `scope = 'global'` and `session_id IS NULL`
 
 ## Examples
 
@@ -88,19 +113,6 @@ VALUES (
 );
 ```
 
-Insert a global memory:
-
-```sql
-INSERT INTO memories (scope, session_id, project_name, content, metadata)
-VALUES (
-  'global',
-  NULL,
-  'my-project',
-  'The production hostname is api.internal.example',
-  '{"topic":"infrastructure"}'
-);
-```
-
 Run semantic search:
 
 ```sql
@@ -114,25 +126,17 @@ ORDER BY embedding <-> '[0.1,0.2,0.3]'::vector
 LIMIT 5;
 ```
 
-## Errors
+## Failure Classes
 
-The tool returns two distinct failure classes:
-
-- `QUERY FAILURE`: your SQL was invalid or failed at the query layer
-- `TOOL FAILURE`: configuration, connection, extension bootstrap, or schema bootstrap failed
-
-This is meant to make it obvious whether the agent wrote bad SQL or the plugin/database environment is misconfigured.
+- `QUERY FAILURE`: SQL execution failed
+- `TOOL FAILURE`: configuration, connectivity, bootstrap, or runtime failure
 
 ## Development
 
 ```bash
-just setup
+just install
+just cli-help
+just typecheck
 just test
 just check
-```
-
-Run only this plugin's integration suite:
-
-```bash
-bun test tests/integration/postgres-memory-plugin.test.ts
 ```
