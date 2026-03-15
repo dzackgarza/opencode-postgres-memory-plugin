@@ -10,9 +10,9 @@
 
 Commands:
   remember    Save a memory to the file store
-  recall      Search memories semantically (via semtools)
-  list        List/filter memories by scope, project, or tag
-  list-files  Output memory file paths for piping
+  list        Query memory metadata with SQL; returns matching paths
+  list-files  Output memory file paths for piping to other tools
+  recall      Search memories semantically (via semtools) — standalone only
   forget      Delete a memory by ID
 """
 from __future__ import annotations
@@ -21,6 +21,7 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -160,37 +161,44 @@ def resolve_memory_root(memory_root_override: Optional[str] = None) -> Path:
     return Path(xdg_data) / "opencode-memory"
 
 
-def resolve_project_slug(
+def validate_project_name(name: str) -> Optional[str]:
+    """Return an error string if name is not a safe single-component directory name."""
+    p = Path(name)
+    if p.is_absolute():
+        return f"project name must not be an absolute path: {name!r}"
+    parts = p.parts
+    if len(parts) != 1:
+        return f"project name must be a single path component (no slashes or '..'): {name!r}"
+    if parts[0] in (".", ".."):
+        return f"project name must not be '.' or '..': {name!r}"
+    return None
+
+
+def resolve_project(
     project: Optional[str],
     cwd: Optional[str],
-) -> Optional[str]:
-    """Return the project slug for directory routing.
+) -> str:
+    """Return the project name for directory routing.
 
-    Priority: explicit --project > git root detection from --cwd > None.
-    Returns None when neither is given and no git root is found; callers
-    should fall back to global scope in that case.
+    Priority: explicit --project > git root detection from --cwd > "global".
+    "global" is not a special scope — it is just the default project name when
+    no git context is available or explicitly requested.
     """
     if project:
         return project
     git_root = detect_git_root(cwd)
     if git_root:
         return slug_from_path(git_root)
-    return None
+    return "global"
 
 
-def scope_dir(root: Path, scope: Optional[str], project_slug: Optional[str]) -> Path:
-    """Return the directory for a given scope and project slug.
-
-    - scope='global': root/global/
-    - scope=None (default) with project_slug: root/projects/{slug}/
-    - scope=None with no slug (not in a git repo): root/global/ (fallback)
-    """
-    if scope == "global":
-        return root / "global"
-    if project_slug:
-        return root / "projects" / project_slug
-    # Not in a git repo and no explicit project → fall back to global
-    return root / "global"
+def project_dir(root: Path, project: str) -> Path:
+    """Return the directory for a given project name, confined to root."""
+    result = (root / project).resolve()
+    root_resolved = root.resolve()
+    if not str(result).startswith(str(root_resolved) + os.sep) and result != root_resolved:
+        raise ValueError(f"project path escapes memory root: {result}")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -247,23 +255,17 @@ def all_memory_files(root: Path) -> list[Path]:
 
 def scoped_memory_files(
     root: Path,
-    scope: Optional[str],
-    project_slug: Optional[str],
+    project: Optional[str],
     session_id: Optional[str] = None,
 ) -> list[Path]:
-    """Return memory files matching scope, project, and session_id filters.
+    """Return memory files matching a project filter.
 
-    - scope='global': only root/global/*.md
-    - project_slug set: only root/projects/{slug}/*.md
-    - neither: all files under root
-    Session_id filtering is applied as a frontmatter metadata filter on top.
+    - project set: only root/{project}/*.md
+    - project=None: all files under root
     """
-    if scope == "global":
-        d = root / "global"
+    if project:
+        d = root / project
         files: list[Path] = list(d.glob("*.md")) if d.exists() else []
-    elif project_slug:
-        d = root / "projects" / project_slug
-        files = list(d.glob("*.md")) if d.exists() else []
     else:
         files = all_memory_files(root)
 
@@ -329,13 +331,9 @@ def emit(payload: dict) -> None:
 @app.command()
 def remember(
     content: Annotated[str, typer.Option("--content", help="Memory content (markdown)")],
-    scope: Annotated[
-        Optional[str],
-        typer.Option("--scope", help="'global' to force global scope. Omit to auto-detect project from --cwd."),
-    ] = None,
     project: Annotated[
         Optional[str],
-        typer.Option("--project", help="Explicit project slug (overrides --cwd git detection)"),
+        typer.Option("--project", help="Project name. 'global' for cross-project storage. Omit to auto-detect from --cwd."),
     ] = None,
     cwd: Annotated[
         Optional[str],
@@ -343,15 +341,11 @@ def remember(
     ] = None,
     session_id: Annotated[
         Optional[str],
-        typer.Option("--session-id", help="Session ID stored as metadata for later filtering"),
+        typer.Option("--session-id", help="Session ID stored as provenance metadata"),
     ] = None,
     tag: Annotated[
         Optional[list[str]],
         typer.Option("--tag", help="Tag (repeatable: --tag foo --tag bar)"),
-    ] = None,
-    metadata: Annotated[
-        Optional[str],
-        typer.Option("--metadata", help="JSON object for arbitrary key-value metadata"),
     ] = None,
     memory_root: Annotated[
         Optional[str],
@@ -362,33 +356,23 @@ def remember(
     root = resolve_memory_root(memory_root)
     git_error = ensure_memory_repo(root)
 
-    meta: dict = {}
-    if metadata:
-        try:
-            meta = json.loads(metadata)
-        except json.JSONDecodeError as exc:
-            emit({"ok": False, "stage": "configuration", "message": f"Invalid --metadata JSON: {exc}"})
+    if project:
+        err = validate_project_name(project)
+        if err:
+            emit({"ok": False, "stage": "configuration", "message": err})
             raise typer.Exit(1)
 
-    slug = resolve_project_slug(project, cwd)
-    sdir = scope_dir(root, scope, slug)
+    proj = resolve_project(project, cwd)
+    pdir = project_dir(root, proj)
 
     memory_id = gen_id()
-    path = sdir / make_filename(memory_id)
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Effective scope: global if explicitly requested or no project detected
-    effective_scope = "global" if (scope == "global" or slug is None) else "project"
+    path = pdir / make_filename(memory_id)
 
     frontmatter = {
-        "created_at": now,
         "id": memory_id,
-        "metadata": meta,
-        "project": slug,
-        "scope": effective_scope,
+        "project": proj,
         "session_id": session_id,
         "tags": tag or [],
-        "updated_at": now,
     }
 
     try:
@@ -404,22 +388,132 @@ def remember(
         "kind": "remember",
         "id": memory_id,
         "path": str(path),
-        "scope": effective_scope,
-        "project": slug,
+        "project": proj,
         "git_error": git_error,
     })
+
+
+@app.command(name="list")
+def list_memories(
+    sql: Annotated[str, typer.Option("--sql", help="SQL SELECT query against the memories table")],
+    memory_root: Annotated[
+        Optional[str],
+        typer.Option("--memory-root", help="Override the memory root directory"),
+    ] = None,
+) -> None:
+    """Query memory metadata with SQL. Returns rows from an in-memory SQLite table.
+
+    Schema:
+      CREATE TABLE memories (
+        id         TEXT,
+        path       TEXT,
+        project    TEXT,
+        session_id TEXT,
+        tags       TEXT,    -- JSON array, e.g. '["deploy","ops"]'
+        mtime      TEXT     -- ISO 8601 from filesystem mtime
+      )
+    """
+    root = resolve_memory_root(memory_root)
+    files = all_memory_files(root)
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE memories (
+            id         TEXT,
+            path       TEXT,
+            project    TEXT,
+            session_id TEXT,
+            tags       TEXT,    -- JSON array, e.g. '["deploy","ops"]'
+            mtime      TEXT     -- ISO 8601 from filesystem mtime
+        )
+    """)
+    rows = []
+    for f in files:
+        m = parse_memory_file(f)
+        if m:
+            mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat()
+            rows.append((
+                m.get("id"),
+                str(f),
+                m.get("project"),
+                m.get("session_id"),
+                json.dumps(m.get("tags") or []),
+                mtime,
+            ))
+    if rows:
+        conn.executemany("INSERT INTO memories VALUES (?,?,?,?,?,?)", rows)
+    conn.commit()
+    # Prevent write operations — agents may only SELECT
+    conn.execute("PRAGMA query_only = ON")
+
+    try:
+        cursor = conn.execute(sql)
+        if cursor.description is None:
+            emit({"ok": False, "stage": "sql", "message": "SQL statement produced no result set — use a SELECT query"})
+            raise typer.Exit(1)
+        cols = [d[0] for d in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        emit({"ok": False, "stage": "sql", "message": str(exc)})
+        raise typer.Exit(1)
+
+    emit({"ok": True, "kind": "list", "results": rows, "count": len(rows)})
+
+
+@app.command(name="list-files")
+def list_files(
+    project: Annotated[
+        Optional[str],
+        typer.Option("--project", help="Restrict to a project name (e.g. 'global')"),
+    ] = None,
+    cwd: Annotated[
+        Optional[str],
+        typer.Option("--cwd", help="Working directory for git root detection"),
+    ] = None,
+    session_id: Annotated[
+        Optional[str],
+        typer.Option("--session-id", help="Filter by session ID metadata"),
+    ] = None,
+    tag: Annotated[
+        Optional[str],
+        typer.Option("--tag", help="Filter by tag"),
+    ] = None,
+    limit: Annotated[int, typer.Option("--limit", help="Maximum results")] = 50,
+    memory_root: Annotated[
+        Optional[str],
+        typer.Option("--memory-root", help="Override the memory root directory"),
+    ] = None,
+) -> None:
+    """Output memory file paths one per line for piping to other tools.
+
+    Example: list-files --project global | xargs grep 'nginx'
+    Example: list-files --cwd . | head -20 | xargs cat
+    """
+    root = resolve_memory_root(memory_root)
+    proj = resolve_project(project, cwd) if (project or cwd) else None
+    files = scoped_memory_files(root, proj, session_id)
+
+    count = 0
+    for path in sorted(files, key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+        if tag:
+            memory = parse_memory_file(path)
+            if not memory or tag not in (memory.get("tags") or []):
+                continue
+        print(path)
+        count += 1
+        if count >= limit:
+            break
 
 
 @app.command()
 def recall(
     query: Annotated[str, typer.Argument(help="Search query")],
-    scope: Annotated[
-        Optional[str],
-        typer.Option("--scope", help="'global' to restrict to global memories. Omit to search project (or all)."),
-    ] = None,
     project: Annotated[
         Optional[str],
-        typer.Option("--project", help="Explicit project slug"),
+        typer.Option("--project", help="Restrict to a project name. Omit to search all."),
     ] = None,
     cwd: Annotated[
         Optional[str],
@@ -435,12 +529,10 @@ def recall(
         typer.Option("--memory-root", help="Override the memory root directory"),
     ] = None,
 ) -> None:
-    """Search memories semantically using semtools."""
+    """Search memories semantically using semtools (standalone tool, not a plugin tool)."""
     root = resolve_memory_root(memory_root)
-    # For reads: only derive slug when caller explicitly provides a hint.
-    # Omitting both means "search all" — do not silently auto-detect from process cwd.
-    slug = resolve_project_slug(project, cwd) if (project or cwd) else None
-    files = scoped_memory_files(root, scope, slug, session_id)
+    proj = resolve_project(project, cwd) if (project or cwd) else None
+    files = scoped_memory_files(root, proj, session_id)
 
     if not files:
         emit({"ok": True, "kind": "recall", "results": [], "count": 0})
@@ -470,104 +562,6 @@ def recall(
             results.append({**memory, "distance": distance})
 
     emit({"ok": True, "kind": "recall", "results": results, "count": len(results)})
-
-
-@app.command(name="list")
-def list_memories(
-    scope: Annotated[
-        Optional[str],
-        typer.Option("--scope", help="'global' to list only global memories. Omit to list all or use --project."),
-    ] = None,
-    project: Annotated[
-        Optional[str],
-        typer.Option("--project", help="Restrict to memories for this project slug"),
-    ] = None,
-    cwd: Annotated[
-        Optional[str],
-        typer.Option("--cwd", help="Working directory for git root detection"),
-    ] = None,
-    session_id: Annotated[
-        Optional[str],
-        typer.Option("--session-id", help="Filter by session ID metadata"),
-    ] = None,
-    tag: Annotated[
-        Optional[str],
-        typer.Option("--tag", help="Filter by tag"),
-    ] = None,
-    limit: Annotated[int, typer.Option("--limit", help="Maximum results")] = 50,
-    memory_root: Annotated[
-        Optional[str],
-        typer.Option("--memory-root", help="Override the memory root directory"),
-    ] = None,
-) -> None:
-    """List memories with optional scope and tag filters."""
-    root = resolve_memory_root(memory_root)
-    # For reads: only derive slug when caller explicitly provides a hint.
-    # Omitting both means "list all" — do not silently auto-detect from process cwd.
-    slug = resolve_project_slug(project, cwd) if (project or cwd) else None
-    files = scoped_memory_files(root, scope, slug, session_id)
-
-    results = []
-    for path in sorted(files, key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
-        memory = parse_memory_file(path)
-        if memory is None:
-            continue
-        if tag and tag not in (memory.get("tags") or []):
-            continue
-        results.append(memory)
-        if len(results) >= limit:
-            break
-
-    emit({"ok": True, "kind": "list", "results": results, "count": len(results)})
-
-
-@app.command(name="list-files")
-def list_files(
-    scope: Annotated[
-        Optional[str],
-        typer.Option("--scope", help="'global' to restrict to global memories"),
-    ] = None,
-    project: Annotated[
-        Optional[str],
-        typer.Option("--project", help="Restrict to a project slug"),
-    ] = None,
-    cwd: Annotated[
-        Optional[str],
-        typer.Option("--cwd", help="Working directory for git root detection"),
-    ] = None,
-    session_id: Annotated[
-        Optional[str],
-        typer.Option("--session-id", help="Filter by session ID metadata"),
-    ] = None,
-    tag: Annotated[
-        Optional[str],
-        typer.Option("--tag", help="Filter by tag"),
-    ] = None,
-    limit: Annotated[int, typer.Option("--limit", help="Maximum results")] = 50,
-    memory_root: Annotated[
-        Optional[str],
-        typer.Option("--memory-root", help="Override the memory root directory"),
-    ] = None,
-) -> None:
-    """Output memory file paths one per line for piping to other tools.
-
-    Example: list-files --project my-app | xargs grep 'nginx'
-    Example: list-files --cwd . | head -20 | xargs cat
-    """
-    root = resolve_memory_root(memory_root)
-    slug = resolve_project_slug(project, cwd) if (project or cwd) else None
-    files = scoped_memory_files(root, scope, slug, session_id)
-
-    count = 0
-    for path in sorted(files, key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
-        if tag:
-            memory = parse_memory_file(path)
-            if not memory or tag not in (memory.get("tags") or []):
-                continue
-        print(path)
-        count += 1
-        if count >= limit:
-            break
 
 
 @app.command()

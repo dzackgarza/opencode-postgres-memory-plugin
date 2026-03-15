@@ -16,40 +16,19 @@ const ISSUE_REPORTING_HINT = `If this looks like a plugin/runtime bug, file a Gi
 // Result types
 // ---------------------------------------------------------------------------
 
-type MemoryRecord = {
-  id?: string;
-  scope?: string;
-  session_id?: string | null;
-  project?: string;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-  content?: string;
-  path?: string;
-  created_at?: string;
-  distance?: number;
-};
-
 type RememberSuccess = {
   ok: true;
   kind: "remember";
   id: string;
   path: string;
-  scope: string;
   project: string;
   git_error?: string | null;
-};
-
-type RecallSuccess = {
-  ok: true;
-  kind: "recall";
-  results: MemoryRecord[];
-  count: number;
 };
 
 type ListSuccess = {
   ok: true;
   kind: "list";
-  results: MemoryRecord[];
+  results: Record<string, unknown>[];
   count: number;
 };
 
@@ -70,7 +49,6 @@ type CliFailure = {
 
 type CliResult =
   | RememberSuccess
-  | RecallSuccess
   | ListSuccess
   | ForgetSuccess
   | CliFailure;
@@ -175,19 +153,17 @@ function formatCliResult(result: CliResult): string {
   }
 
   if (result.kind === "remember") {
-    const base = `Saved: ${result.id} (${result.scope}) → ${result.path}`;
+    const base = `Saved: ${result.id} → ${result.path}`;
     return result.git_error ? base + formatGitError(result.git_error) : base;
   }
 
-  if (result.kind === "recall" || result.kind === "list") {
+  if (result.kind === "list") {
     if (result.count === 0) return "No memories found.";
     return result.results
-      .map((m, i) => {
-        const header = `[${i + 1}] ${m.id ?? "?"}${m.distance !== undefined ? ` (distance: ${m.distance.toFixed(3)})` : ""}`;
-        const tags = m.tags?.length ? `tags: ${m.tags.join(", ")}` : undefined;
-        return [header, tags, m.content].filter(Boolean).join("\n");
-      })
-      .join("\n\n---\n\n");
+      .map((row, i) =>
+        [`[${i + 1}]`, ...Object.entries(row).map(([k, v]) => `  ${k}: ${v}`)].join("\n"),
+      )
+      .join("\n\n");
   }
 
   if (result.kind === "forget") {
@@ -248,21 +224,53 @@ export const FileMemoryPlugin: Plugin = async ({ client }) => {
       remember: tool({
         description: withPassphrase(
           withPluginVersion(
-            `Use when you need to save a fact, note, or context for future recall.
+            `Write a new memory to the git-backed file store.
 
-Stores the content as a YAML-headered markdown file in a git-backed memory store.
+## Store layout
 
-Project scoping (automatic):
-  - Memories are filed under the git-root of the current working directory.
-  - If the agent is not in a git repo, memories go to the global scope automatically.
+Root: $OPENCODE_MEMORY_ROOT (default: ~/.local/share/opencode-memory)
 
-Scope override:
-  - scope: "global" — force global storage regardless of git repo context.
+  {root}/{project}/
+    {id}-{timestamp}.md
 
-Session tracking:
-  - Pass session_id to tag the memory with a session for later filtering.
+"global" is the default project when the agent is not inside a git repo.
+Each git repo gets its own project directory, named from the git root slug.
 
-Example: save a deploy note for later recall
+## File format
+
+Each memory is a YAML-headered markdown file:
+
+  ---
+  id: mem_8k2j9x
+  project: my-project-slug
+  session_id: ses_abc123
+  tags: [deploy, ops]
+  ---
+  Production deploy requires manual approval from @ops
+
+## Reading memories
+
+Memories are plain files — search them directly with:
+
+  Semantic search (recommended):
+    npx -y -p @llamaindex/semtools semtools search "deploy steps" {root}/**/*.md
+
+  Keyword search:
+    grep -rl "nginx" {root}/
+
+  Read a file:
+    cat {path}
+
+## Project
+
+Memories are filed under the git-root slug of the current working directory.
+Pass project: "global" to force global storage regardless of git repo context.
+
+## Session tracking
+
+Omit session_id to use the current OpenCode session ID automatically.
+
+Example:
   content: "Production deploy requires manual approval from @ops"
   tags: ["deploy", "ops"]`,
           ),
@@ -273,34 +281,30 @@ Example: save a deploy note for later recall
           content: tool.schema
             .string()
             .describe("Memory content (markdown text, any length)"),
-          scope: tool.schema
+          project: tool.schema
             .string()
             .optional()
-            .describe("'global' to force global scope. Omit to auto-detect project from working directory."),
+            .describe("'global' to force global storage. Omit to auto-detect from working directory."),
           session_id: tool.schema
             .string()
             .optional()
             .describe(
-              "Session ID stored as metadata for later filtering. Defaults to the current OpenCode session.",
+              "Session ID stored as provenance metadata. Defaults to the current OpenCode session.",
             ),
           tags: tool.schema
             .array(tool.schema.string())
             .optional()
             .describe("Tags for filtering, e.g. [\"deploy\", \"ops\"]"),
-          metadata: tool.schema
-            .string()
-            .optional()
-            .describe("JSON object for arbitrary key-value metadata, e.g. '{\"topic\":\"infra\"}'"),
         },
         async execute(args, context) {
-          const scope = args.scope;
+          const project = args.project;
           const sessionId = args.session_id ?? context.sessionID;
 
           await context.ask({
             permission: "remember",
             patterns: [args.content.slice(0, 120)],
             always: ["*"],
-            metadata: { scope, sessionId },
+            metadata: { project, sessionId },
           });
 
           const cliArgs = [
@@ -310,12 +314,11 @@ Example: save a deploy note for later recall
             "--cwd",
             process.cwd(),
           ];
-          if (scope) cliArgs.push("--scope", scope);
+          if (project) cliArgs.push("--project", project);
           if (sessionId) cliArgs.push("--session-id", sessionId);
           if (args.tags?.length) {
             for (const t of args.tags) cliArgs.push("--tag", t);
           }
-          if (args.metadata) cliArgs.push("--metadata", args.metadata);
 
           const memoryRoot = resolveMemoryRoot();
           const result = await runCliCommand(cliArgs, {
@@ -332,7 +335,7 @@ Example: save a deploy note for later recall
             }
             context.metadata({
               title: "Saved memory",
-              metadata: { id: result.id, scope: result.scope, project: result.project },
+              metadata: { id: result.id, project: result.project },
             });
           }
 
@@ -340,129 +343,43 @@ Example: save a deploy note for later recall
         },
       }),
 
-      recall: tool({
-        description: withPassphrase(
-          withPluginVersion(
-            `Use when you need to find previously stored memories about a topic.
-
-Performs semantic search over memories using semtools. Returns the closest matches by meaning.
-
-Scope:
-  - Omit scope to search all memories for the current project (auto-detected from working directory).
-  - scope: "global" searches only global memories.
-
-Example: find notes about deployment
-  query: "production deployment steps"`,
-          ),
-          "recall",
-          "visible",
-        ),
-        args: {
-          query: tool.schema
-            .string()
-            .describe("Natural language search query"),
-          scope: tool.schema
-            .string()
-            .optional()
-            .describe("'global' to restrict to global memories. Omit to search current project."),
-          session_id: tool.schema
-            .string()
-            .optional()
-            .describe("Filter to memories from a specific session."),
-          limit: tool.schema
-            .number()
-            .optional()
-            .describe("Maximum number of results (default: 5)"),
-        },
-        async execute(args, context) {
-          const scope = args.scope;
-          const sessionId = args.session_id;
-
-          await context.ask({
-            permission: "recall",
-            patterns: [args.query],
-            always: ["*"],
-            metadata: { scope, sessionId },
-          });
-
-          const cliArgs = [
-            "recall",
-            args.query,
-            "--cwd",
-            process.cwd(),
-          ];
-          if (scope) cliArgs.push("--scope", scope);
-          if (sessionId) cliArgs.push("--session-id", sessionId);
-          if (args.limit != null) cliArgs.push("--limit", String(args.limit));
-
-          const memoryRoot = resolveMemoryRoot();
-          const result = await runCliCommand(cliArgs, {
-            ...process.env,
-            OPENCODE_MEMORY_ROOT: memoryRoot,
-          });
-
-          if (result.ok && result.kind === "recall") {
-            context.metadata({
-              title: "Recalled memories",
-              metadata: { query: args.query, count: result.count },
-            });
-          }
-
-          return withPassphrase(formatCliResult(result), "recall", "execute");
-        },
-      }),
-
       list_memories: tool({
         description: withPassphrase(
           withPluginVersion(
-            `Use when you need to browse or filter stored memories by scope, session, or tag.
+            `Query memory metadata using SQL. Accepts standard SQL SELECT queries.
 
-Returns a list of memories in reverse chronological order (most recent first).
+All memory frontmatter is loaded into an in-memory SQLite table. Results include
+the absolute file path so you can read memory content directly.
 
-Example: list all global memories tagged "deploy"
-  scope: "global"
-  tag: "deploy"`,
+Schema:
+
+  CREATE TABLE memories (
+    id         TEXT,
+    path       TEXT,    -- absolute path to the .md file
+    project    TEXT,    -- "global" or a git-root slug
+    session_id TEXT,
+    tags       TEXT,    -- JSON array, e.g. '["deploy","ops"]'
+    mtime      TEXT     -- ISO 8601 from filesystem mtime
+  )`,
           ),
           "list_memories",
           "visible",
         ),
         args: {
-          scope: tool.schema
+          sql: tool.schema
             .string()
-            .optional()
-            .describe("'global' to list only global memories. Omit to list current project or all."),
-          session_id: tool.schema
-            .string()
-            .optional()
-            .describe("Filter to memories from a specific session."),
-          tag: tool.schema
-            .string()
-            .optional()
-            .describe("Filter by tag name"),
-          limit: tool.schema
-            .number()
-            .optional()
-            .describe("Maximum number of results (default: 50)"),
+            .describe("SQL SELECT query against the memories table"),
         },
         async execute(args, context) {
-          const scope = args.scope;
-          const sessionId = args.session_id;
-
           await context.ask({
             permission: "list_memories",
             patterns: [],
             always: ["*"],
-            metadata: { scope, sessionId, tag: args.tag },
+            metadata: { sql: args.sql },
           });
 
-          const cliArgs = ["list", "--cwd", process.cwd()];
-          if (scope) cliArgs.push("--scope", scope);
-          if (sessionId) cliArgs.push("--session-id", sessionId);
-          if (args.tag) cliArgs.push("--tag", args.tag);
-          if (args.limit != null) cliArgs.push("--limit", String(args.limit));
-
           const memoryRoot = resolveMemoryRoot();
-          const result = await runCliCommand(cliArgs, {
+          const result = await runCliCommand(["list", "--sql", args.sql], {
             ...process.env,
             OPENCODE_MEMORY_ROOT: memoryRoot,
           });
@@ -470,7 +387,7 @@ Example: list all global memories tagged "deploy"
           if (result.ok && result.kind === "list") {
             context.metadata({
               title: "Listed memories",
-              metadata: { scope, count: result.count },
+              metadata: { count: result.count },
             });
           }
 
@@ -481,12 +398,12 @@ Example: list all global memories tagged "deploy"
       forget: tool({
         description: withPassphrase(
           withPluginVersion(
-            `Use when a stored memory is outdated, incorrect, or no longer needed.
+            `Delete a memory permanently by ID. Use this instead of direct file deletion to keep the git history intact.
 
-Deletes the memory permanently by its ID. Obtain the ID from recall or list_memories.
 The deletion is committed to the memory git repo for auditability.
+Obtain the ID from list_memories or by reading a memory file's frontmatter.
 
-Example: delete a memory with id "mem_abc123"
+Example:
   id: "mem_abc123"`,
           ),
           "forget",
@@ -495,7 +412,7 @@ Example: delete a memory with id "mem_abc123"
         args: {
           id: tool.schema
             .string()
-            .describe("Memory ID to delete (e.g. mem_abc123). Obtain from recall or list_memories."),
+            .describe("Memory ID to delete (e.g. mem_abc123). Obtain from list_memories or memory file frontmatter."),
         },
         async execute(args, context) {
           await context.ask({

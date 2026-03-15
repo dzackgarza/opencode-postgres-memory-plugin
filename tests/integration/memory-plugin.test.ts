@@ -155,17 +155,7 @@ describe("file-memory runtime integration", () => {
     const content = "The production hostname is api.internal.example";
 
     const result = (await fileMemoryTesting.runCliCommand(
-      [
-        "remember",
-        "--content",
-        content,
-        "--scope",
-        "global",
-        "--tag",
-        "infra",
-        "--metadata",
-        '{"topic":"hostname"}',
-      ],
+      ["remember", "--content", content, "--project", "global", "--tag", "infra"],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
 
@@ -180,8 +170,8 @@ describe("file-memory runtime integration", () => {
     expect(files.length).toBe(1);
     const fileContent = readFileSync(join(globalDir, files[0]!), "utf8");
     expect(fileContent).toContain("id: mem_");
-    expect(fileContent).toContain("scope: global");
-    expect(fileContent).toContain("topic: hostname");
+    expect(fileContent).toContain("project: global");
+    expect(fileContent).toContain("- infra");
     expect(fileContent).toContain(content);
   });
 
@@ -189,7 +179,7 @@ describe("file-memory runtime integration", () => {
     const memRoot = makeTempMemoryRoot();
 
     await fileMemoryTesting.runCliCommand(
-      ["remember", "--content", "first memory", "--scope", "global"],
+      ["remember", "--content", "first memory", "--project", "global"],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     );
 
@@ -216,33 +206,33 @@ describe("file-memory runtime integration", () => {
     );
     // Global memory
     await fileMemoryTesting.runCliCommand(
-      ["remember", "--content", "global note", "--scope", "global"],
+      ["remember", "--content", "global note", "--project", "global"],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     );
 
     // List by project + session filter → only the project note
     const projectList = (await fileMemoryTesting.runCliCommand(
-      ["list", "--project", project, "--session-id", sessionId],
+      ["list", "--sql", `SELECT * FROM memories WHERE project = '${project}' AND session_id = '${sessionId}'`],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
     if (!projectList.ok || projectList.kind !== "list")
       throw new Error(JSON.stringify(projectList));
     expect(projectList.count).toBe(1);
-    expect(projectList.results[0]?.content).toBe("project note");
+    expect(projectList.results[0]?.["project"]).toBe(project);
 
     // List global only → only the global note
     const globalList = (await fileMemoryTesting.runCliCommand(
-      ["list", "--scope", "global"],
+      ["list", "--sql", "SELECT * FROM memories WHERE project = 'global'"],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
     if (!globalList.ok || globalList.kind !== "list")
       throw new Error(JSON.stringify(globalList));
     expect(globalList.count).toBe(1);
-    expect(globalList.results[0]?.content).toBe("global note");
+    expect(globalList.results[0]?.["project"]).toBe("global");
 
-    // List all (no scope, no project) → both
+    // List all → both
     const allList = (await fileMemoryTesting.runCliCommand(
-      ["list"],
+      ["list", "--sql", "SELECT * FROM memories"],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
     if (!allList.ok || allList.kind !== "list") throw new Error(JSON.stringify(allList));
@@ -274,12 +264,12 @@ describe("file-memory runtime integration", () => {
     expect(forgetResult.kind).toBe("forget");
 
     const remaining = (await fileMemoryTesting.runCliCommand(
-      ["list", "--project", project],
+      ["list", "--sql", `SELECT id FROM memories WHERE project = '${project}'`],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
     if (!remaining.ok || remaining.kind !== "list") throw new Error(JSON.stringify(remaining));
     expect(remaining.count).toBe(1);
-    expect(remaining.results[0]?.content).toBe("to keep");
+    expect(remaining.results[0]?.["id"]).toBe(r2.id);
   });
 
   it("forget returns a not_found failure for an unknown ID", async () => {
@@ -322,7 +312,7 @@ describe("file-memory runtime integration", () => {
     expect(ids.size).toBe(10);
 
     const listed = (await fileMemoryTesting.runCliCommand(
-      ["list", "--project", project],
+      ["list", "--sql", `SELECT id FROM memories WHERE project = '${project}'`],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
     if (!listed.ok || listed.kind !== "list") throw new Error(JSON.stringify(listed));
@@ -364,39 +354,47 @@ describe("file-memory runtime integration", () => {
     }
   });
 
-  it("recall returns semantically relevant results via semtools", async () => {
+  it("list --sql returns results matching SQL filter", async () => {
     const memRoot = makeTempMemoryRoot();
     const project = `test_${randomSuffix()}`;
 
-    for (const content of [
-      "The API gateway uses nginx for SSL termination",
-      "The database password is rotated monthly by the security team",
-      "nginx handles load balancing across three backend instances",
-    ]) {
-      await fileMemoryTesting.runCliCommand(
-        ["remember", "--content", content, "--project", project],
-        { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
-      );
-    }
+    await fileMemoryTesting.runCliCommand(
+      ["remember", "--content", "nginx SSL termination", "--project", project, "--tag", "infra"],
+      { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
+    );
+    await fileMemoryTesting.runCliCommand(
+      ["remember", "--content", "database rotation policy", "--project", project, "--tag", "security"],
+      { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
+    );
+    await fileMemoryTesting.runCliCommand(
+      ["remember", "--content", "global note", "--project", "global"],
+      { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
+    );
 
+    // SQL filter: only memories in the test project
     const result = (await fileMemoryTesting.runCliCommand(
-      [
-        "recall",
-        "nginx web server configuration",
-        "--project",
-        project,
-        "--limit",
-        "2",
-      ],
+      ["list", "--sql", `SELECT id, path, project FROM memories WHERE project = '${project}'`],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
     )) as CliResult;
 
-    if (!result.ok || result.kind !== "recall")
-      throw new Error(`recall failed: ${JSON.stringify(result)}`);
-    expect(result.count).toBeGreaterThan(0);
-    const contents = result.results.map((r) => r.content ?? "");
-    expect(contents.some((c) => c.toLowerCase().includes("nginx"))).toBe(true);
-  }, 60_000);
+    if (!result.ok || result.kind !== "list")
+      throw new Error(`list failed: ${JSON.stringify(result)}`);
+    expect(result.count).toBe(2);
+    for (const row of result.results) {
+      expect(row["project"]).toBe(project);
+      expect(String(row["path"])).toMatch(/\.md$/);
+    }
+
+    // SQL filter by tag using json_each
+    const tagResult = (await fileMemoryTesting.runCliCommand(
+      ["list", "--sql", `SELECT id FROM memories WHERE EXISTS (SELECT 1 FROM json_each(tags) WHERE value = 'infra')`],
+      { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
+    )) as CliResult;
+
+    if (!tagResult.ok || tagResult.kind !== "list")
+      throw new Error(`tag list failed: ${JSON.stringify(tagResult)}`);
+    expect(tagResult.count).toBe(1);
+  });
 
   it("formatCliResult produces TOOL FAILURE text for failed results", async () => {
     // forget on a non-existent memory root → not_found failure
