@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "pyyaml",
+#   "typer",
+# ]
+# ///
 """opencode-file-memory: YAML-headered markdown memory store for OpenCode agents.
 
 Commands:

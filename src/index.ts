@@ -1,18 +1,14 @@
 import { type Plugin, tool } from "@opencode-ai/plugin";
-import { execFile } from "node:child_process";
+import { $ } from "bun";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import pkg from "../package.json" assert { type: "json" };
-
-const execFileAsync = promisify(execFile);
 
 const PLUGIN_VERSION = pkg.version;
 const BUG_REPORTING_URL =
   "https://github.com/dzackgarza/opencode-postgres-memory-plugin/issues/new?labels=bug";
 const MEMORY_ROOT_ENV = "OPENCODE_MEMORY_ROOT";
 const MEMORY_SEED_ENV = "OPENCODE_MEMORY_TEST_SEED";
-const PYTHON_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const ISSUE_REPORTING_HINT = `If this looks like a plugin/runtime bug, file a GitHub issue tagged \`bug\`: ${BUG_REPORTING_URL}`;
 
 // ---------------------------------------------------------------------------
@@ -128,65 +124,25 @@ async function runCliCommand(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<CliResult> {
   const cli = cliPath();
-  try {
-    const { stdout } = await execFileAsync(
-      "uv",
-      [
-        "run",
-        "--no-project",
-        "--python",
-        "3.12",
-        "--with",
-        "typer",
-        "--with",
-        "pyyaml",
-        "python3",
-        cli,
-        ...args,
-      ],
-      {
-        env,
-        maxBuffer: PYTHON_MAX_BUFFER_BYTES,
-      },
-    );
-    const trimmed = stdout.trim();
-    if (!trimmed) {
-      return {
-        ok: false,
-        stage: "runner_output",
-        message: "CLI returned empty output.",
-      };
-    }
-    return JSON.parse(trimmed) as CliResult;
-  } catch (error) {
-    const isError = typeof error === "object" && error !== null;
-    const message =
-      isError && "message" in error && typeof error.message === "string"
-        ? error.message
-        : String(error);
-    const stdout =
-      isError && "stdout" in error && typeof error.stdout === "string"
-        ? error.stdout.trim()
-        : undefined;
-    const stderr =
-      isError && "stderr" in error && typeof error.stderr === "string"
-        ? error.stderr.trim()
-        : undefined;
-
-    // If stdout has a valid JSON result, prefer it over the process error
-    if (stdout) {
-      try {
-        return JSON.parse(stdout) as CliResult;
-      } catch {
-        // fall through
-      }
-    }
-
+  // uv reads PEP 723 inline deps from cli.py — no --with flags needed.
+  const output = await $`uv run ${cli} ${args}`.env(env).quiet().nothrow();
+  const text = output.stdout.toString().trim();
+  if (!text) {
     return {
       ok: false,
-      stage: "runner_process",
-      message: "CLI runner exited before returning a result.",
-      detail: [message, stderr].filter(Boolean).join("\n"),
+      stage: "runner_output",
+      message: "CLI returned empty output.",
+      detail: output.stderr.toString().trim() || undefined,
+    };
+  }
+  try {
+    return JSON.parse(text) as CliResult;
+  } catch {
+    return {
+      ok: false,
+      stage: "runner_output",
+      message: "CLI returned non-JSON output.",
+      detail: text.slice(0, 500),
     };
   }
 }
