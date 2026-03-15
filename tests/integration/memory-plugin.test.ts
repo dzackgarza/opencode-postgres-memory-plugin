@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -14,33 +14,41 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileMemoryTesting } from "../../src/index.ts";
 
-const OPENCODE = process.env.OPENCODE_BIN || "opencode";
 const TOOL_DIR = process.cwd();
 const OPENCODE_CONFIG_PATH = join(TOOL_DIR, ".config", "opencode.json");
 const MAX_BUFFER = 8 * 1024 * 1024;
 const SESSION_TIMEOUT_MS = 240_000;
 const PRIMARY_AGENT_NAME = "plugin-proof";
 const SEED = "FMEM-99";
+const SERVER_PORT = 4399;
+const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
+const MANAGER = "npx --yes --package=git+https://github.com/dzackgarza/opencode-manager.git opx";
 
 type CliResult = Awaited<ReturnType<typeof fileMemoryTesting.runCliCommand>>;
 
-// JSON event emitted by `opencode run --format json`
-type ToolUseEvent = {
-  type: "tool_use";
-  part: {
-    type: "tool";
-    tool: string;
-    state: {
-      status?: string;
-      input?: unknown;
-      output?: string;
-    };
-  };
+// Tool step shape from `opx transcript --json`
+type TranscriptToolStep = {
+  type: "tool";
+  tool: string;
+  status: string;
+  inputText: string;
+  outputText: string;
+};
+
+type TranscriptData = {
+  sessionID: string;
+  turns: Array<{
+    userPrompt: string;
+    assistantMessages: Array<{
+      steps: Array<{ type: string; [key: string]: unknown }>;
+    }>;
+  }>;
 };
 
 const tempPaths = new Set<string>();
 let sharedConfig: string;
 let sharedMemRoot: string;
+let serverProcess: ChildProcess | null = null;
 
 function registerTempPath(path: string): string {
   tempPaths.add(path);
@@ -74,69 +82,79 @@ function createConfigFile(): string {
   return configPath;
 }
 
-function parseJsonEvents(output: string): unknown[] {
-  return output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line)];
-      } catch {
-        return [];
-      }
-    });
-}
-
-function runJson(
-  prompt: string,
-  config: string,
-  extraEnv: Record<string, string> = {},
-): unknown[] {
-  const result = spawnSync(
-    OPENCODE,
-    ["run", "--agent", PRIMARY_AGENT_NAME, "--format", "json", prompt],
+/** Start a repo-local opencode server; keeps it alive as a child of this process. */
+function startServer(config: string, extraEnv: Record<string, string> = {}): void {
+  serverProcess = spawn(
+    "direnv",
+    ["exec", TOOL_DIR, "opencode", "serve", "--hostname", "127.0.0.1", "--port", String(SERVER_PORT)],
     {
       cwd: TOOL_DIR,
-      encoding: "utf8",
-      timeout: SESSION_TIMEOUT_MS,
-      maxBuffer: MAX_BUFFER,
-      env: {
-        ...process.env,
-        OPENCODE_CONFIG: config,
-        OPENCODE_MEMORY_TEST_SEED: SEED,
-        ...extraEnv,
-      },
+      env: { ...process.env, OPENCODE_CONFIG: config, ...extraEnv },
+      stdio: "ignore",
+      detached: false,
     },
   );
-  if (result.error) throw result.error;
-  return parseJsonEvents((result.stdout ?? "") + (result.stderr ?? ""));
+  // Give the server time to bind
+  spawnSync("sleep", ["5"]);
 }
 
-function findCompletedToolUse(events: unknown[], toolName: string): ToolUseEvent {
-  const match = (events as unknown[]).find(
-    (event): event is ToolUseEvent =>
-      typeof event === "object" &&
-      event !== null &&
-      "type" in event &&
-      (event as Record<string, unknown>).type === "tool_use" &&
-      "part" in event &&
-      typeof (event as Record<string, unknown>).part === "object" &&
-      (event as Record<string, unknown>).part !== null &&
-      "tool" in ((event as Record<string, unknown>).part as Record<string, unknown>) &&
-      ((event as Record<string, unknown>).part as Record<string, unknown>).tool === toolName &&
-      "state" in ((event as Record<string, unknown>).part as Record<string, unknown>) &&
-      typeof ((event as Record<string, unknown>).part as Record<string, unknown>).state === "object" &&
-      ((event as Record<string, unknown>).part as Record<string, unknown>).state !== null &&
-      "status" in (((event as Record<string, unknown>).part as Record<string, unknown>).state as Record<string, unknown>) &&
-      (((event as Record<string, unknown>).part as Record<string, unknown>).state as Record<string, unknown>).status === "completed",
+/** Run a prompt against the live server via opencode-manager; return the transcript. */
+function runSession(
+  prompt: string,
+  extraEnv: Record<string, string> = {},
+): TranscriptData {
+  const env = {
+    ...process.env,
+    OPENCODE_BASE_URL: SERVER_URL,
+    OPENCODE_MEMORY_TEST_SEED: SEED,
+    ...extraEnv,
+  };
+
+  const beginResult = spawnSync(
+    "bash",
+    ["-c", `${MANAGER} begin-session "${prompt.replace(/"/g, '\\"')}" --agent ${PRIMARY_AGENT_NAME} --json`],
+    { cwd: TOOL_DIR, encoding: "utf8", timeout: SESSION_TIMEOUT_MS, maxBuffer: MAX_BUFFER, env },
   );
-  if (!match) {
+  if (beginResult.error) throw beginResult.error;
+  const beginStdout = beginResult.stdout.trim();
+  if (!beginStdout) {
     throw new Error(
-      `No completed tool use for ${toolName}.\n${JSON.stringify(events.slice(-10), null, 2)}`,
+      `begin-session returned empty stdout (exit ${beginResult.status}).\nstderr: ${beginResult.stderr}`,
     );
   }
-  return match;
+  const { sessionID } = JSON.parse(beginStdout) as { sessionID: string };
+
+  // Wait for completion
+  spawnSync(
+    "bash",
+    ["-c", `${MANAGER} wait --session ${sessionID}`],
+    { cwd: TOOL_DIR, encoding: "utf8", timeout: SESSION_TIMEOUT_MS, maxBuffer: MAX_BUFFER, env },
+  );
+
+  // Read transcript
+  const transcriptResult = spawnSync(
+    "bash",
+    ["-c", `${MANAGER} transcript --session ${sessionID} --json`],
+    { cwd: TOOL_DIR, encoding: "utf8", timeout: 30_000, maxBuffer: MAX_BUFFER, env },
+  );
+  if (transcriptResult.error) throw transcriptResult.error;
+  return JSON.parse(transcriptResult.stdout.trim()) as TranscriptData;
+}
+
+/** Find a completed tool step in a transcript by tool name. */
+function findToolStep(transcript: TranscriptData, toolName: string): TranscriptToolStep {
+  for (const turn of transcript.turns) {
+    for (const msg of turn.assistantMessages) {
+      for (const step of msg.steps) {
+        if (step.type === "tool" && (step as TranscriptToolStep).tool === toolName && (step as TranscriptToolStep).status === "completed") {
+          return step as TranscriptToolStep;
+        }
+      }
+    }
+  }
+  throw new Error(
+    `No completed tool step for "${toolName}" in transcript ${transcript.sessionID}`,
+  );
 }
 
 afterAll(() => {
@@ -412,24 +430,29 @@ describe("file-memory runtime integration", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Live OpenCode session tests (opencode run --format json)
+// Live OpenCode session tests (opencode-manager)
 // ---------------------------------------------------------------------------
 
 describe("file-memory live opencode sessions", () => {
   beforeAll(() => {
     sharedMemRoot = makeTempMemoryRoot();
     sharedConfig = createConfigFile();
+    startServer(sharedConfig, { OPENCODE_MEMORY_ROOT: sharedMemRoot });
+  }, 30_000);
+
+  afterAll(() => {
+    serverProcess?.kill();
+    serverProcess = null;
   });
 
   it("agent can remember a fact and it appears in the memory root as a file", () => {
     const secret = `GOLDEN-TICKET-${randomUUID()}`;
-    const events = runJson(
+    const transcript = runSession(
       `Call remember exactly once with content="${secret}" and project="global". Reply with ONLY WRITTEN after the tool finishes.`,
-      sharedConfig,
       { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
-    const toolUse = findCompletedToolUse(events, "remember");
-    expect(toolUse.part.state.status).toBe("completed");
+    const step = findToolStep(transcript, "remember");
+    expect(step.status).toBe("completed");
 
     // Verify the file was written to disk
     const globalDir = join(sharedMemRoot, "global");
@@ -443,30 +466,27 @@ describe("file-memory live opencode sessions", () => {
   it("agent can find a memory written in a prior run using list_memories", () => {
     // Write in first session
     const secret = `RECALL-TOKEN-${randomUUID()}`;
-    runJson(
+    runSession(
       `Call remember exactly once with content="${secret}" and project="global". Reply ONLY WRITTEN.`,
-      sharedConfig,
       { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
 
     // Find via list_memories SQL in second independent session
-    const readEvents = runJson(
+    const transcript = runSession(
       `Call list_memories exactly once with sql="SELECT path FROM memories WHERE project='global' ORDER BY mtime DESC LIMIT 1". Reply with ONLY the path value from the result, nothing else.`,
-      sharedConfig,
       { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
-    const listToolUse = findCompletedToolUse(readEvents, "list_memories");
-    expect(listToolUse.part.state.output).toContain(sharedMemRoot);
+    const step = findToolStep(transcript, "list_memories");
+    expect(step.outputText).toContain(sharedMemRoot);
   }, SESSION_TIMEOUT_MS);
 
   it("forget surfaces a TOOL FAILURE when the memory ID does not exist", () => {
-    const events = runJson(
+    const transcript = runSession(
       'Call forget exactly once with id="mem_definitelynotavalidid_xyzzy". Reply with ONLY FAILED after the tool finishes.',
-      sharedConfig,
       { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
-    const forgetToolUse = findCompletedToolUse(events, "forget");
-    expect(forgetToolUse.part.state.output).toContain("TOOL FAILURE");
-    expect(forgetToolUse.part.state.output).not.toContain("Deleted");
+    const step = findToolStep(transcript, "forget");
+    expect(step.outputText).toContain("TOOL FAILURE");
+    expect(step.outputText).not.toContain("Deleted");
   }, SESSION_TIMEOUT_MS);
 });
