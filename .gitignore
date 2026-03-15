@@ -1,6 +1,7 @@
 node_modules/
 *.egg-info/
 dist/
+build/
 .serena/
 *.log
 *.tmp
