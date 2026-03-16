@@ -46,3 +46,11 @@ bump-minor:
 # Push commits and tags to trigger CI release
 release: check
     git push && git push --tags
+
+# Run the MCP server tests
+mcp-test:
+    cd mcp-server && PYTHONPATH=src uv run python -m pytest
+
+# Run the MCP server locally
+mcp-run:
+    cd mcp-server && uv run opencode-memory-mcp

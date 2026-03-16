@@ -593,6 +593,7 @@ def forget(
                 "ok": True,
                 "kind": "forget",
                 "id": memory_id,
+                "path": str(path),
                 "message": f"Deleted {memory_id}",
                 "git_error": git_error,
             })
