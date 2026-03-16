@@ -43,6 +43,18 @@ def _run(args: list[str]) -> dict:
                 "message": result.stderr.strip() or "empty output",
             }
         return json.loads(text)
+    except FileNotFoundError:
+        return {
+            "ok": False,
+            "stage": "mcp-wrapper",
+            "message": "uv not found - ensure uv is installed and on PATH",
+        }
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "stage": "mcp-wrapper",
+            "message": f"CLI returned invalid JSON: {exc}",
+        }
     except Exception as exc:
         return {"ok": False, "stage": "mcp-wrapper", "message": str(exc)}
 
