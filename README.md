@@ -47,7 +47,7 @@ Use when you need to save a memory to the persistent store.
 | `content` | `string` | Yes | Memory content (markdown) |
 | `project` | `string` | No | `"global"` for cross-project storage. Omit to auto-detect from working directory. |
 | `session_id` | `string` | No | Provenance metadata. Defaults to current session ID. |
-| `tags` | `string[]` | No | Tags for filtering, e.g. `["deploy", "ops"]` |
+| `tags` | `string[]` | No | Tags for filtering, e.g. `["deploy", "ops"]\ 
 
 #### Example Input
 ```json
@@ -114,6 +114,8 @@ uv run src/cli.py recall "nginx configuration"
 
 | Name | Required | Default | Controls |
 |------|----------|---------|---------|
+| `OPENCODE_CONFIG` | Yes | — | Path to the local OpenCode config file (for isolation) |
+| `XDG_CONFIG_HOME` | No | — | Project-local config root (e.g. `$PWD/.xdg-home`) |
 | `OPENCODE_MEMORY_ROOT` | No | `~/.local/share/opencode-memory` | Override the memory store root directory |
 
 ## Dependencies

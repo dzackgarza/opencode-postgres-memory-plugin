@@ -1,3 +1,4 @@
+set fallback := true
 
 # Install JavaScript dependencies
 install:

@@ -4,12 +4,12 @@
 Exposes remember / list_memories / forget as MCP tools by calling the
 canonical opencode-memory CLI.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import subprocess
-from typing import Optional
 
 from fastmcp import FastMCP
 
@@ -19,10 +19,13 @@ mcp = FastMCP("opencode-memory")
 def _run(args: list[str]) -> dict:
     """Run the canonical CLI and return the JSON result."""
     try:
-        # Call the installed entrypoint 'opencode-memory'
-        # This is robust regardless of where the package is installed.
+        cli_spec = os.environ.get(
+            "MEMORY_MANAGER_CLI_SPEC",
+            "file:///home/dzack/opencode-plugins/clis/memory-manager",
+        )
+
         result = subprocess.run(
-            ["opencode-memory", *args],
+            ["uvx", "--from", cli_spec, "opencode-memory", *args],
             capture_output=True,
             text=True,
             env=os.environ,
@@ -54,9 +57,9 @@ def _run(args: list[str]) -> dict:
 @mcp.tool()
 def remember(
     content: str,
-    project: Optional[str] = None,
-    session_id: Optional[str] = None,
-    tags: Optional[list[str]] = None,
+    project: str | None = None,
+    session_id: str | None = None,
+    tags: list[str] | None = None,
 ) -> str:
     """Use when you need to save a memory to the persistent store.
 
@@ -99,7 +102,7 @@ def list_memories(sql: str) -> str:
     rows = result.get("results", [])
     if not rows:
         return "0 results"
-    
+
     # Return a formatted string for better agent readability
     header = list(rows[0].keys())
     lines = [" | ".join(header)]
@@ -123,4 +126,4 @@ def forget(id: str) -> str:  # noqa: A002
 def main() -> None:
     # transport='stdio' and show_banner=False ensures standard MCP behavior
     # without interactive splash screens interfering with the protocol or logs.
-    mcp.run(transport='stdio', show_banner=False)
+    mcp.run(transport="stdio", show_banner=False)

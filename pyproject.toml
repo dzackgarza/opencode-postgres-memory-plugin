@@ -5,13 +5,8 @@ description = "Persistent, git-backed markdown memory store for OpenCode agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pyyaml>=6.0.1",
-    "typer>=0.12.3",
     "fastmcp>=0.1.0",
 ]
-
-[project.scripts]
-opencode-memory = "opencode_memory.cli:app"
 
 [dependency-groups]
 dev = [
@@ -25,3 +20,4 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/opencode_memory"]
+
