@@ -99,7 +99,7 @@ async function runCliCommand(
   // Use uvx to run the canonical CLI from the local CLI repo during refactor work.
   const cliSpec =
     env.MEMORY_MANAGER_CLI_SPEC ??
-    'file:///home/dzack/opencode-plugins/clis/memory-manager';
+    'git+https://github.com/dzackgarza/memory-manager.git';
 
   const output = await $`uvx --from ${cliSpec} opencode-memory ${args}`
     .env(env)
