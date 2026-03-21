@@ -21,7 +21,7 @@ def _run(args: list[str]) -> dict:
     try:
         cli_spec = os.environ.get(
             "MEMORY_MANAGER_CLI_SPEC",
-            "file:///home/dzack/opencode-plugins/clis/memory-manager",
+            "git+https://github.com/dzackgarza/memory-manager.git",
         )
 
         result = subprocess.run(
