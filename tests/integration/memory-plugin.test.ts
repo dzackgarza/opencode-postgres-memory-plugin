@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { afterAll, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -11,22 +11,26 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { fileMemoryTesting } from "../../src/index.ts";
 
 const TOOL_DIR = fileURLToPath(new URL("../..", import.meta.url));
-const OPENCODE_CONFIG_PATH = join(TOOL_DIR, ".config", "opencode.json");
 const MAX_BUFFER = 8 * 1024 * 1024;
 const SESSION_TIMEOUT_MS = 240_000;
-const PRIMARY_AGENT_NAME = "opencode-postgres-memory-plugin-proof";
-const SEED = "FMEM-99";
-const SERVER_PORT = 4399;
-const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
-const MANAGER = "npx --yes --package=git+https://github.com/dzackgarza/opencode-manager.git opx";
+const AGENT_NAME = "plugin-proof";
+const MANAGER_PACKAGE = "git+https://github.com/dzackgarza/opencode-manager.git";
+
+// Server is started and torn down by `just test` — not by this file.
+// Set OPENCODE_BASE_URL and OPENCODE_MEMORY_ROOT before running.
+const BASE_URL = process.env.OPENCODE_BASE_URL;
+if (!BASE_URL) throw new Error("OPENCODE_BASE_URL must be set (run via `just test`)");
+
+const SHARED_MEM_ROOT = process.env.OPENCODE_MEMORY_ROOT;
+if (!SHARED_MEM_ROOT) throw new Error("OPENCODE_MEMORY_ROOT must be set (run via `just test`)");
 
 type CliResult = Awaited<ReturnType<typeof fileMemoryTesting.runCliCommand>>;
 
-// Tool step shape from `opx transcript --json`
+// Tool step shape from `ocm transcript --json`
 type TranscriptToolStep = {
   type: "tool";
   tool: string;
@@ -46,9 +50,6 @@ type TranscriptData = {
 };
 
 const tempPaths = new Set<string>();
-let sharedConfig: string;
-let sharedMemRoot: string;
-let serverProcess: ChildProcess | null = null;
 
 function registerTempPath(path: string): string {
   tempPaths.add(path);
@@ -63,82 +64,46 @@ function makeTempMemoryRoot(): string {
   return registerTempPath(mkdtempSync(join(tmpdir(), "opencode-file-memory-")));
 }
 
-function createConfigFile(): string {
-  const configPath = registerTempPath(
-    join(
-      TOOL_DIR,
-      ".config",
-      `temp.opencode.${Math.random().toString(36).slice(2)}.json`,
-    ),
-  );
-  const baseConfig = JSON.parse(
-    readFileSync(OPENCODE_CONFIG_PATH, "utf8"),
-  ) as Record<string, unknown>;
-  const pluginUrl = pathToFileURL(join(TOOL_DIR, "src/index.ts")).toString();
-  writeFileSync(
-    configPath,
-    `${JSON.stringify({ ...baseConfig, plugin: [pluginUrl] }, null, 2)}\n`,
-  );
-  return configPath;
-}
+afterAll(() => {
+  for (const path of tempPaths) {
+    rmSync(path, { recursive: true, force: true });
+  }
+});
 
-/** Start a repo-local opencode server; keeps it alive as a child of this process. */
-function startServer(config: string, extraEnv: Record<string, string> = {}): void {
-  serverProcess = spawn(
-    "direnv",
-    ["exec", TOOL_DIR, "opencode", "serve", "--hostname", "127.0.0.1", "--port", String(SERVER_PORT)],
+function runOcm(args: string[]): { stdout: string; stderr: string } {
+  const result = spawnSync(
+    "uvx",
+    ["--from", MANAGER_PACKAGE, "ocm", ...args],
     {
-      cwd: TOOL_DIR,
-      env: { ...process.env, OPENCODE_CONFIG: config, ...extraEnv },
-      stdio: "ignore",
-      detached: false,
+      env: { ...process.env, OPENCODE_BASE_URL: BASE_URL, OPENCODE_MEMORY_ROOT: SHARED_MEM_ROOT },
+      encoding: "utf8",
+      timeout: SESSION_TIMEOUT_MS,
+      maxBuffer: MAX_BUFFER,
     },
   );
-  // Give the server time to bind
-  spawnSync("sleep", ["5"]);
+  if (result.error) throw result.error;
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  if (result.status !== 0) {
+    throw new Error(`ocm ${args.join(" ")} failed\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`);
+  }
+  return { stdout, stderr };
 }
 
-/** Run a prompt against the live server via opencode-manager; return the transcript. */
-function runSession(
-  prompt: string,
-  extraEnv: Record<string, string> = {},
-): TranscriptData {
-  const env = {
-    ...process.env,
-    OPENCODE_BASE_URL: SERVER_URL,
-    OPENCODE_MEMORY_TEST_SEED: SEED,
-    ...extraEnv,
-  };
+function beginSession(prompt: string): string {
+  const { stdout } = runOcm(["begin-session", prompt, "--agent", AGENT_NAME, "--json"]);
+  const data = JSON.parse(stdout) as { sessionID: string };
+  if (!data.sessionID) throw new Error(`begin-session returned no sessionID: ${stdout}`);
+  return data.sessionID;
+}
 
-  const beginResult = spawnSync(
-    "bash",
-    ["-c", `${MANAGER} begin-session "${prompt.replace(/"/g, '\\"')}" --agent ${PRIMARY_AGENT_NAME} --json`],
-    { cwd: TOOL_DIR, encoding: "utf8", timeout: SESSION_TIMEOUT_MS, maxBuffer: MAX_BUFFER, env },
-  );
-  if (beginResult.error) throw beginResult.error;
-  const beginStdout = beginResult.stdout.trim();
-  if (!beginStdout) {
-    throw new Error(
-      `begin-session returned empty stdout (exit ${beginResult.status}).\nstderr: ${beginResult.stderr}`,
-    );
-  }
-  const { sessionID } = JSON.parse(beginStdout) as { sessionID: string };
+function waitIdle(sessionID: string) {
+  runOcm(["wait", sessionID, "--timeout-sec=180"]);
+}
 
-  // Wait for completion
-  spawnSync(
-    "bash",
-    ["-c", `${MANAGER} wait --session ${sessionID}`],
-    { cwd: TOOL_DIR, encoding: "utf8", timeout: SESSION_TIMEOUT_MS, maxBuffer: MAX_BUFFER, env },
-  );
-
-  // Read transcript
-  const transcriptResult = spawnSync(
-    "bash",
-    ["-c", `${MANAGER} transcript --session ${sessionID} --json`],
-    { cwd: TOOL_DIR, encoding: "utf8", timeout: 30_000, maxBuffer: MAX_BUFFER, env },
-  );
-  if (transcriptResult.error) throw transcriptResult.error;
-  return JSON.parse(transcriptResult.stdout.trim()) as TranscriptData;
+function readTranscript(sessionID: string): TranscriptData {
+  const { stdout } = runOcm(["transcript", sessionID, "--json"]);
+  return JSON.parse(stdout) as TranscriptData;
 }
 
 /** Find a completed tool step in a transcript by tool name. */
@@ -146,7 +111,11 @@ function findToolStep(transcript: TranscriptData, toolName: string): TranscriptT
   for (const turn of transcript.turns) {
     for (const msg of turn.assistantMessages) {
       for (const step of msg.steps) {
-        if (step.type === "tool" && (step as TranscriptToolStep).tool === toolName && (step as TranscriptToolStep).status === "completed") {
+        if (
+          step.type === "tool" &&
+          (step as TranscriptToolStep).tool === toolName &&
+          (step as TranscriptToolStep).status === "completed"
+        ) {
           return step as TranscriptToolStep;
         }
       }
@@ -157,14 +126,8 @@ function findToolStep(transcript: TranscriptData, toolName: string): TranscriptT
   );
 }
 
-afterAll(() => {
-  for (const path of tempPaths) {
-    rmSync(path, { recursive: true, force: true });
-  }
-});
-
 // ---------------------------------------------------------------------------
-// Runtime integration tests (direct CLI, no OpenCode)
+// Runtime integration tests (direct CLI, no OpenCode server)
 // ---------------------------------------------------------------------------
 
 describe("file-memory runtime integration", () => {
@@ -273,7 +236,6 @@ describe("file-memory runtime integration", () => {
     if (!r1.ok || r1.kind !== "remember") throw new Error(JSON.stringify(r1));
     if (!r2.ok || r2.kind !== "remember") throw new Error(JSON.stringify(r2));
 
-    // forget no longer needs --project: IDs are globally unique
     const forgetResult = (await fileMemoryTesting.runCliCommand(
       ["forget", "--id", r1.id],
       { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
@@ -410,7 +372,6 @@ describe("file-memory runtime integration", () => {
   });
 
   it("formatCliResult produces TOOL FAILURE text for failed results", async () => {
-    // forget on a non-existent memory root → not_found failure
     const failResult = (await fileMemoryTesting.runCliCommand(
       ["forget", "--id", "mem_ghost"],
       { ...process.env, OPENCODE_MEMORY_ROOT: "/tmp/definitely_does_not_exist_xyzzy" },
@@ -425,63 +386,72 @@ describe("file-memory runtime integration", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Live OpenCode session tests (opencode-manager)
+// Live OpenCode session tests (opencode-manager, requires running server)
 // ---------------------------------------------------------------------------
 
 describe("file-memory live opencode sessions", () => {
-  beforeAll(() => {
-    sharedMemRoot = makeTempMemoryRoot();
-    sharedConfig = createConfigFile();
-    startServer(sharedConfig, { OPENCODE_MEMORY_ROOT: sharedMemRoot });
-  }, 30_000);
-
-  afterAll(() => {
-    serverProcess?.kill();
-    serverProcess = null;
-  });
-
   it("agent can remember a fact and it appears in the memory root as a file", () => {
     const secret = `GOLDEN-TICKET-${randomUUID()}`;
-    const transcript = runSession(
+    const sessionID = beginSession(
       `Call remember exactly once with content="${secret}" and project="global". Reply with ONLY WRITTEN after the tool finishes.`,
-      { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
-    const step = findToolStep(transcript, "remember");
-    expect(step.status).toBe("completed");
+    try {
+      waitIdle(sessionID);
+      const transcript = readTranscript(sessionID);
+      const step = findToolStep(transcript, "remember");
+      expect(step.status).toBe("completed");
 
-    // Verify the file was written to disk
-    const globalDir = join(sharedMemRoot, "global");
-    const files = readdirSync(globalDir);
-    const found = files.some((f) =>
-      readFileSync(join(globalDir, f), "utf8").includes(secret),
-    );
-    expect(found).toBe(true);
+      // Verify the file was written to disk in the shared memory root
+      const globalDir = join(SHARED_MEM_ROOT, "global");
+      const files = readdirSync(globalDir);
+      const found = files.some((f) =>
+        readFileSync(join(globalDir, f), "utf8").includes(secret),
+      );
+      expect(found).toBe(true);
+    } finally {
+      try { runOcm(["delete", sessionID]); } catch { /* best-effort */ }
+    }
   }, SESSION_TIMEOUT_MS);
 
   it("agent can find a memory written in a prior run using list_memories", () => {
-    // Write in first session
     const secret = `RECALL-TOKEN-${randomUUID()}`;
-    runSession(
+
+    // Write in first session
+    const writeID = beginSession(
       `Call remember exactly once with content="${secret}" and project="global". Reply ONLY WRITTEN.`,
-      { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
+    try {
+      waitIdle(writeID);
+    } finally {
+      try { runOcm(["delete", writeID]); } catch { /* best-effort */ }
+    }
 
     // Find via list_memories SQL in second independent session
-    const transcript = runSession(
+    const readID = beginSession(
       `Call list_memories exactly once with sql="SELECT path FROM memories WHERE project='global' ORDER BY mtime DESC LIMIT 1". Reply with ONLY the path value from the result, nothing else.`,
-      { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
-    const step = findToolStep(transcript, "list_memories");
-    expect(step.outputText).toContain(sharedMemRoot);
+    try {
+      waitIdle(readID);
+      const transcript = readTranscript(readID);
+      const step = findToolStep(transcript, "list_memories");
+      expect(step.outputText).toContain(SHARED_MEM_ROOT);
+    } finally {
+      try { runOcm(["delete", readID]); } catch { /* best-effort */ }
+    }
   }, SESSION_TIMEOUT_MS);
 
   it("forget surfaces a TOOL FAILURE when the memory ID does not exist", () => {
-    const transcript = runSession(
+    const sessionID = beginSession(
       'Call forget exactly once with id="mem_definitelynotavalidid_xyzzy". Reply with ONLY FAILED after the tool finishes.',
-      { OPENCODE_MEMORY_ROOT: sharedMemRoot },
     );
-    const step = findToolStep(transcript, "forget");
-    expect(step.outputText).toContain("TOOL FAILURE");
-    expect(step.outputText).not.toContain("Deleted");
+    try {
+      waitIdle(sessionID);
+      const transcript = readTranscript(sessionID);
+      const step = findToolStep(transcript, "forget");
+      expect(step.outputText).toContain("TOOL FAILURE");
+      expect(step.outputText).not.toContain("Deleted");
+    } finally {
+      try { runOcm(["delete", sessionID]); } catch { /* best-effort */ }
+    }
   }, SESSION_TIMEOUT_MS);
 });
