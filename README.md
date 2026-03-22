@@ -1,10 +1,21 @@
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/I2I57UKJ8)
 # opencode-memory-plugin
-Persistent, git-backed markdown memory store for OpenCode agents. This tool exists because agents need a version-controlled memory that is human-readable, searchable via standard CLI tools, and portable across project boundaries without requiring a heavy database.
+
+Persistent file-backed memory tools for OpenCode.
+
+This package is a thin OpenCode wrapper around the `memory-manager` CLI surface. The
+plugin-owned tool contract is limited to:
+
+- `remember`
+- `list_memories`
+- `forget`
+
+Manager-only commands such as `recall`, `list-files`, and `doctor` are not exposed as
+OpenCode plugin tools from this repo.
 
 ## Configuration
 
-Add to your OpenCode configuration:
+Add the plugin and allow only the wrapper-owned tools:
 
 ```json
 {
@@ -19,9 +30,9 @@ Add to your OpenCode configuration:
 }
 ```
 
-### MCP Configuration
+### MCP Server
 
-This plugin also provides a standalone MCP server. Add to any MCP client config:
+This repo also ships a standalone MCP server entrypoint:
 
 ```json
 {
@@ -29,7 +40,8 @@ This plugin also provides a standalone MCP server. Add to any MCP client config:
     "opencode-memory": {
       "command": "uvx",
       "args": [
-        "--from", "git+https://github.com/dzackgarza/opencode-memory-plugin#subdirectory=mcp-server",
+        "--from",
+        "git+https://github.com/dzackgarza/opencode-memory-plugin#subdirectory=mcp-server",
         "opencode-memory-mcp"
       ]
     }
@@ -40,16 +52,18 @@ This plugin also provides a standalone MCP server. Add to any MCP client config:
 ## Tools
 
 ### `remember`
-Use when you need to save a memory to the persistent store.
+
+Write a new memory into the file-backed store.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `content` | `string` | Yes | Memory content (markdown) |
-| `project` | `string` | No | `"global"` for cross-project storage. Omit to auto-detect from working directory. |
-| `session_id` | `string` | No | Provenance metadata. Defaults to current session ID. |
-| `tags` | `string[]` | No | Tags for filtering, e.g. `["deploy", "ops"]\ 
+| `content` | `string` | Yes | Memory content as markdown text |
+| `project` | `string` | No | Use `"global"` to force global storage. Omit to auto-detect from the current working directory. |
+| `session_id` | `string` | No | Provenance session ID. Defaults to the current OpenCode session. |
+| `tags` | `string[]` | No | Tags for filtering, for example `["deploy", "ops"]` |
 
-#### Example Input
+Example:
+
 ```json
 {
   "content": "Production deploy requires manual approval from @ops",
@@ -58,79 +72,74 @@ Use when you need to save a memory to the persistent store.
 ```
 
 ### `list_memories`
-Use when you need to query memory metadata using SQL.
+
+Query memory metadata through SQL against the manager-owned index.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `sql` | `string` | Yes | SQL SELECT query against the memories table |
+| `sql` | `string` | Yes | SQL `SELECT` query against the `memories` table |
 
-**`memories` table schema:**
+`memories` table columns:
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `TEXT` | Unique memory ID (e.g. `mem_abc123`) |
-| `path` | `TEXT` | Absolute path to the .md file |
-| `project` | `TEXT` | `"global"` or a git-root slug |
-| `session_id` | `TEXT` | Original session provenance |
+| `id` | `TEXT` | Memory ID such as `mem_abc123` |
+| `path` | `TEXT` | Absolute path to the markdown file |
+| `project` | `TEXT` | Project slug or `"global"` |
+| `session_id` | `TEXT` | Stored provenance session ID |
 | `tags` | `TEXT` | JSON array of tags |
-| `mtime` | `TEXT` | ISO 8601 timestamp |
+| `mtime` | `TEXT` | ISO 8601 modification time |
 
-#### Example Input
+Example:
+
 ```json
 {
-  "sql": "SELECT * FROM memories WHERE project = 'global' AND tags LIKE '%deploy%'"
+  "sql": "SELECT id, path FROM memories WHERE project = 'global' ORDER BY mtime DESC LIMIT 5"
 }
 ```
 
 ### `forget`
-Use when you need to delete a memory permanently by its ID.
+
+Delete a memory permanently by ID.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | `string` | Yes | Memory ID (e.g. `mem_abc123`) |
+| `id` | `string` | Yes | Memory ID such as `mem_abc123` |
 
-#### Example Input
+Example:
+
 ```json
 {
   "id": "mem_abc123"
 }
 ```
 
-## CLI
+## Wrapper Boundary
 
-`src/cli.py` is the canonical core logic. It can be used directly for manual inspection or semantic search:
+The plugin delegates to the underlying `memory-manager` CLI via `uvx`. The wrapper does
+not own the manager CLI command set; it owns only the three OpenCode tools above plus
+their result formatting and permission contract.
 
-```bash
-# Save a memory
-uv run src/cli.py remember --content "nginx handles SSL" --project global
-
-# List memories via SQL
-uv run src/cli.py list --sql "SELECT * FROM memories WHERE project = 'global'"
-
-# Semantic search (requires semtools)
-uv run src/cli.py recall "nginx configuration"
-```
+If you need to point the plugin at a local manager checkout during proof or refactor
+work, set `MEMORY_MANAGER_CLI_SPEC` to a local path or alternate package spec.
 
 ## Environment Variables
 
 | Name | Required | Default | Controls |
 |------|----------|---------|---------|
-| `OPENCODE_CONFIG` | Yes | — | Path to the local OpenCode config file (for isolation) |
-| `XDG_CONFIG_HOME` | No | — | Project-local config root (e.g. `$PWD/.xdg-home`) |
-| `OPENCODE_MEMORY_ROOT` | No | `~/.local/share/opencode-memory` | Override the memory store root directory |
+| `OPENCODE_MEMORY_ROOT` | No | `~/.local/share/opencode-memory` | Root directory for the memory store |
+| `MEMORY_MANAGER_CLI_SPEC` | No | `git+https://github.com/dzackgarza/memory-manager.git` | Alternate manager package or local checkout for wrapper execution |
+| `OPENCODE_MEMORY_TEST_SEED` | No | — | Test-only verification passphrase seed |
 
 ## Dependencies
 
-The plugin requires these tools to be installed and on `PATH`:
+| Tool | Purpose |
+|------|---------|
+| `bun` | Plugin runtime and TypeScript tooling |
+| `uv` | Runs the delegated Python manager and MCP tests |
+| `git` | Version-controls the memory store |
 
-| Tool | Purpose | Install |
-|------|---------|---------|
-| [`uv`](https://docs.astral.sh/uv/) | Runs the bundled CLI and resolves deps | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| `git` | Memory repo version control | OS package manager |
-| [`semtools`](https://github.com/run-llama/semtools) | Local semantic search (optional) | `npm install -g @llamaindex/semtools` |
-
-## Development Setup
-
-For contributors working on the plugin locally:
+## Development
 
 ```bash
 direnv allow .
@@ -144,7 +153,7 @@ direnv allow .
 just check
 ```
 
-For targeted runs, use the canonical `justfile` entrypoints:
+Targeted entrypoints:
 
 ```bash
 just typecheck
@@ -152,7 +161,8 @@ just test
 just mcp-test
 ```
 
-Do not run `bun test`, `bunx tsc`, or `uv run python -m pytest` directly.
+Use the `justfile` entrypoints instead of ad hoc `bun test`, `bunx tsc`, or direct
+`uv run python -m pytest` calls.
 
 ## License
 

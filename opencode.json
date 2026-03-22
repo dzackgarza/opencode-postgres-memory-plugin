@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "./src/index.ts"
+  ],
+  "agent": {
+    "plugin-proof": {
+      "permission": {
+        "remember": "allow",
+        "list_memories": "allow",
+        "forget": "allow"
+      },
+      "description": "Integration test agent: memory tools only, no other tools",
+      "mode": "primary",
+      "prompt": "You are a strict integration-proof agent. Follow the requested protocol exactly and do nothing else. Allowed tools: remember, list_memories, forget only. Never call any other tool. If the memory tools are unavailable, denied, malformed, or fail, stop immediately and reply with ONLY FAIL:PROOF_NOT_POSSIBLE. If the prompt asks for exact text, output it verbatim with no extra text."
+    }
+  }
+}

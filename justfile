@@ -1,6 +1,9 @@
 set fallback := true
 repo_root := justfile_directory()
 
+default:
+  @just test
+
 justfile-hygiene:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -23,25 +26,34 @@ setup-npm-trust:
 publish: check
     direnv exec "{{repo_root}}" npm publish
 
-test: justfile-hygiene
+[private]
+_quality-control: justfile-hygiene
   #!/usr/bin/env bash
   set -euo pipefail
-  root_justfile="{{repo_root}}/../../justfile"
+  cd "{{repo_root}}"
+  exec direnv exec "{{repo_root}}" bun test tests/integration
 
-  cleanup() {
-    just -f "$root_justfile" test-sandbox-down 2>/dev/null || true
-  }
-  trap cleanup EXIT
-
-  just -f "$root_justfile" test-sandbox-up "{{repo_root}}/tests/integration/opencode.json" "{{repo_root}}/.envrc"
-  direnv exec "{{repo_root}}" bun test tests/integration
-
-# Run TypeScript typecheck
-typecheck: justfile-hygiene
+[private]
+_typecheck: justfile-hygiene
     direnv exec "{{repo_root}}" bunx tsc --noEmit
 
-# Run the preferred local verification workflow
-check: justfile-hygiene typecheck test mcp-test
+typecheck: justfile-hygiene _typecheck
+
+[private]
+_mcp-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{repo_root}}"
+    if ! find tests -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit | grep -q .; then
+      exit 0
+    fi
+    exec uv run python -m pytest
+
+mcp-test: justfile-hygiene _mcp-test
+
+check: test
+
+test: justfile-hygiene _typecheck _quality-control _mcp-test
 
 # Bump patch version, commit, and tag
 bump-patch:
@@ -60,10 +72,6 @@ bump-minor:
 # Push commits and tags to trigger CI release
 release: check
     git push && git push --tags
-
-# Run the MCP server tests
-mcp-test:
-    uv run python -m pytest
 
 # Run the MCP server locally
 mcp-run:

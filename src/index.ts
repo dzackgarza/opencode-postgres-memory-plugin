@@ -87,11 +87,6 @@ function resolveMemoryRoot(env: NodeJS.ProcessEnv = process.env): string {
   return join(xdgData, 'opencode-memory');
 }
 
-function cliPath(): string {
-  // Return the path to the CLI in the memory-manager repo for testing
-  return '/home/dzack/opencode-plugins/clis/memory-manager/src/memory_manager/cli.py';
-}
-
 async function runCliCommand(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
@@ -182,7 +177,6 @@ function formatCliResult(result: CliResult): string {
 export const fileMemoryTesting = {
   BUG_REPORTING_URL,
   buildPassphrase,
-  cliPath,
   formatCliResult,
   resolveMemoryRoot,
   runCliCommand,

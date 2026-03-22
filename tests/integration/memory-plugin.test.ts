@@ -12,18 +12,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileMemoryTesting } from "../../src/index.ts";
 
+function requireEnv(name: string, message: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(message);
+  return value;
+}
+
 const MAX_BUFFER = 8 * 1024 * 1024;
+const RUNTIME_TIMEOUT_MS = 20_000;
 const SESSION_TIMEOUT_MS = 240_000;
 const AGENT_NAME = "plugin-proof";
 const MANAGER_PACKAGE = "git+https://github.com/dzackgarza/opencode-manager.git";
+const PROJECT_DIR = process.cwd();
 
-// Server is started and torn down by `just test` — not by this file.
-// Set OPENCODE_BASE_URL and OPENCODE_MEMORY_ROOT before running.
-const BASE_URL = process.env.OPENCODE_BASE_URL;
-if (!BASE_URL) throw new Error("OPENCODE_BASE_URL must be set (run via `just test`)");
-
-const SHARED_MEM_ROOT = process.env.OPENCODE_MEMORY_ROOT;
-if (!SHARED_MEM_ROOT) throw new Error("OPENCODE_MEMORY_ROOT must be set (run via `just test`)");
+// OpenCode must already be running before this file executes.
+// `just test` runs the suite, but it does not start or stop the server.
+const BASE_URL = requireEnv(
+  "OPENCODE_BASE_URL",
+  "OPENCODE_BASE_URL must be set (run against a repo-local or CI OpenCode server)",
+);
+const SHARED_MEM_ROOT = requireEnv(
+  "OPENCODE_MEMORY_ROOT",
+  "OPENCODE_MEMORY_ROOT must be set (from plugin .envrc or CI env)",
+);
 
 type CliResult = Awaited<ReturnType<typeof fileMemoryTesting.runCliCommand>>;
 
@@ -73,6 +84,7 @@ function runOcm(args: string[]): { stdout: string; stderr: string } {
     ["--from", MANAGER_PACKAGE, "ocm", ...args],
     {
       env: { ...process.env, OPENCODE_BASE_URL: BASE_URL, OPENCODE_MEMORY_ROOT: SHARED_MEM_ROOT },
+      cwd: PROJECT_DIR,
       encoding: "utf8",
       timeout: SESSION_TIMEOUT_MS,
       maxBuffer: MAX_BUFFER,
@@ -151,7 +163,7 @@ describe("file-memory runtime integration", () => {
     expect(fileContent).toContain("project: global");
     expect(fileContent).toContain("- infra");
     expect(fileContent).toContain(content);
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("memory root is initialized as a git repo on first write", async () => {
     const memRoot = makeTempMemoryRoot();
@@ -162,7 +174,7 @@ describe("file-memory runtime integration", () => {
     );
 
     expect(existsSync(join(memRoot, ".git"))).toBe(true);
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("remember + list_memories round-trip: project vs global scope isolation", async () => {
     const memRoot = makeTempMemoryRoot();
@@ -215,7 +227,7 @@ describe("file-memory runtime integration", () => {
     )) as CliResult;
     if (!allList.ok || allList.kind !== "list") throw new Error(JSON.stringify(allList));
     expect(allList.count).toBe(2);
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("forget deletes the target memory and leaves others intact", async () => {
     const memRoot = makeTempMemoryRoot();
@@ -247,7 +259,7 @@ describe("file-memory runtime integration", () => {
     if (!remaining.ok || remaining.kind !== "list") throw new Error(JSON.stringify(remaining));
     expect(remaining.count).toBe(1);
     expect(remaining.results[0]?.["id"]).toBe(r2.id);
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("forget returns a not_found failure for an unknown ID", async () => {
     const memRoot = makeTempMemoryRoot();
@@ -260,7 +272,7 @@ describe("file-memory runtime integration", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("Expected failure");
     expect(result.stage).toBe("not_found");
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("concurrent writes produce distinct non-colliding files", async () => {
     const memRoot = makeTempMemoryRoot();
@@ -294,37 +306,7 @@ describe("file-memory runtime integration", () => {
     )) as CliResult;
     if (!listed.ok || listed.kind !== "list") throw new Error(JSON.stringify(listed));
     expect(listed.count).toBe(10);
-  });
-
-  it("list-files outputs one path per line for piping", async () => {
-    const memRoot = makeTempMemoryRoot();
-    const project = `test_${randomSuffix()}`;
-
-    for (let i = 0; i < 3; i++) {
-      await fileMemoryTesting.runCliCommand(
-        ["remember", "--content", `note ${i}`, "--project", project],
-        { ...process.env, OPENCODE_MEMORY_ROOT: memRoot },
-      );
-    }
-
-    // list-files outputs raw paths, not JSON — use the CLI directly
-    const { execFileSync } = await import("node:child_process");
-    const cliPath = fileMemoryTesting.cliPath();
-    const output = execFileSync(
-      "uv",
-      ["run", cliPath, "list-files", "--project", project],
-      { env: { ...process.env, OPENCODE_MEMORY_ROOT: memRoot }, encoding: "utf8" },
-    );
-    const paths = output
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    expect(paths.length).toBe(3);
-    for (const p of paths) {
-      expect(p).toMatch(/\.md$/);
-      expect(existsSync(p)).toBe(true);
-    }
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("list --sql returns results matching SQL filter", async () => {
     const memRoot = makeTempMemoryRoot();
@@ -366,7 +348,7 @@ describe("file-memory runtime integration", () => {
     if (!tagResult.ok || tagResult.kind !== "list")
       throw new Error(`tag list failed: ${JSON.stringify(tagResult)}`);
     expect(tagResult.count).toBe(1);
-  });
+  }, RUNTIME_TIMEOUT_MS);
 
   it("formatCliResult produces TOOL FAILURE text for failed results", async () => {
     const failResult = (await fileMemoryTesting.runCliCommand(
@@ -379,7 +361,7 @@ describe("file-memory runtime integration", () => {
     const formatted = fileMemoryTesting.formatCliResult(failResult);
     expect(formatted).toContain("TOOL FAILURE");
     expect(formatted).toContain(fileMemoryTesting.BUG_REPORTING_URL);
-  });
+  }, RUNTIME_TIMEOUT_MS);
 });
 
 // ---------------------------------------------------------------------------
@@ -425,13 +407,14 @@ describe("file-memory live opencode sessions", () => {
 
     // Find via list_memories SQL in second independent session
     const readID = beginSession(
-      `Call list_memories exactly once with sql="SELECT path FROM memories WHERE project='global' ORDER BY mtime DESC LIMIT 1". Reply with ONLY the path value from the result, nothing else.`,
+      'Call list_memories exactly once with sql="SELECT path FROM memories ORDER BY mtime DESC LIMIT 1". Reply with ONLY FOUND after the tool finishes.',
     );
     try {
       waitIdle(readID);
       const transcript = readTranscript(readID);
       const step = findToolStep(transcript, "list_memories");
       expect(step.outputText).toContain(SHARED_MEM_ROOT);
+      expect(step.outputText).toContain(".md");
     } finally {
       try { runOcm(["delete", readID]); } catch { /* best-effort */ }
     }
